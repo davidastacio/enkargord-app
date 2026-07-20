@@ -509,8 +509,8 @@ export default function AdminDashboard() {
       <aside className="w-[280px] bg-white border-r border-[#E7E7EC] flex flex-col justify-between fixed top-0 bottom-0 left-0 z-40">
         <div>
           {/* Logo Brand Header */}
-          <div className="p-6 border-b border-[#E7E7EC] flex items-center">
-            <div className="relative w-52 h-18">
+          <div className="p-4 border-b border-[#E7E7EC] flex items-center justify-start -ml-4">
+            <div className="relative w-64 h-20">
               <Image 
                 src="/logo.png" 
                 alt="EnkargoRD Logo" 
