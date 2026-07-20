@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel de Tienda | Enkargord</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="dashboard-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <a href="index.html" class="logo" style="display: flex; align-items: center; justify-content: center; width: 100%; overflow: hidden;">
+          <img src="logo.png" alt="EnkargoRD Logo" style="height: 120px; margin: -22px 0; width: auto; max-width: 100%;">
+        </a>
+      </div>
+      
+      <ul class="sidebar-menu">
+        <li class="active"><a href="#" id="menu-store-dashboard">🏪 Panel de Tienda</a></li>
+        <li><a href="#" id="menu-store-products">🛍️ Mis Productos</a></li>
+        <li><a href="#" id="menu-store-orders">📦 Envíos y Pedidos</a></li>
+        <li><a href="#" id="menu-store-labels">🏷️ Imprimir Etiquetas</a></li>
+        <li><a href="#">💰 Mis Finanzas</a></li>
+        <li><a href="#">⚙️ Ajustes</a></li>
+      </ul>
+      
+      <div class="sidebar-help">
+        <div class="sidebar-help-icon">📦</div>
+        <h4>Fulfillment Activo</h4>
+        <p>Empacamos y enviamos tus productos el mismo día.</p>
+      </div>
+      
+      <div class="sidebar-footer">
+        <button class="logout-btn" onclick="window.location.href='index.html'">
+          <span>🚪</span> Cerrar sesión
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="dashboard-content">
+      <!-- Header -->
+      <header class="dashboard-header">
+        <div>
+          <h1 style="font-size: 1.8rem; margin-bottom: 4px;">¡Bienvenido, Tienda Asociada!</h1>
+          <p style="color: var(--gray-medium); font-size: 0.95rem;">Gestiona tu inventario, crea envíos y genera tus etiquetas listas para imprimir.</p>
+        </div>
+        
+        <div style="display: flex; gap: 16px; align-items: center;">
+          <div class="user-profile">
+            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150" class="profile-avatar" alt="Store Owner Profile">
+            <div class="profile-info">
+              <h4>Moda RD</h4>
+              <span>Dueño de Tienda</span>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="btn-open-create-order-store">
+            📦 Crear Envió
+          </button>
+        </div>
+      </header>
+
+      <!-- Grid Principal del Panel de Tienda -->
+      <div style="display: flex; flex-direction: column; gap: 32px;">
+        
+        <!-- Sección Superior: Productos & Creación Rápida -->
+        <div class="product-manager-grid">
+          
+          <!-- Columna Izquierda: Agregar Producto -->
+          <div class="card">
+            <h3 class="card-title" style="margin-bottom: 16px;">🛍️ Subir Nuevo Producto</h3>
+            <form id="store-add-product-form">
+              <div class="form-group">
+                <label for="prod-name">Nombre del Producto</label>
+                <input type="text" id="prod-name" placeholder="Ej: Vestido Casual Rojo" required>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="prod-sku">SKU / Código</label>
+                  <input type="text" id="prod-sku" placeholder="Ej: VEST-01-RED" required>
+                </div>
+                <div class="form-group">
+                  <label for="prod-price">Precio de Venta (RD$)</label>
+                  <input type="number" id="prod-price" placeholder="RD$" min="1" required>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="prod-icon">Categoría / Ícono</label>
+                <select id="prod-icon">
+                  <option value="👚">👚 Ropa / Moda</option>
+                  <option value="👟">👟 Calzado / Zapatos</option>
+                  <option value="📱">📱 Electrónica / Gadgets</option>
+                  <option value="🎒">🎒 Accesorios / Bolsos</option>
+                  <option value="💄">💄 Belleza / Cuidado</option>
+                </select>
+              </div>
+              <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 8px;">Subir Producto</button>
+            </form>
+          </div>
+
+          <!-- Columna Derecha: Inventario de Productos -->
+          <div class="card">
+            <div class="card-header" style="margin-bottom: 16px;">
+              <h3 class="card-title">📦 Mi Inventario de Productos</h3>
+              <span id="product-count" style="font-weight: 600; color: var(--gray-medium);">0 productos</span>
+            </div>
+            <div class="product-list-container" id="store-products-list">
+              <!-- JS Injectable Products -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Sección Inferior: Tracking de Repartidor & Impresión de Etiquetas -->
+        <div class="dashboard-grid-main">
+          
+          <!-- Columna Izquierda: Envíos Recientes & Generador de Labels -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">🏷️ Generador de Etiquetas de Envío</h3>
+              <span style="font-size: 0.85rem; color: var(--gray-medium);">Imprime los labels listos para pegar a tus paquetes</span>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID Envío</th>
+                    <th>Destinatario</th>
+                    <th>Producto</th>
+                    <th>Fulfillment</th>
+                    <th>Total</th>
+                    <th style="text-align: right;">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="store-orders-table-body">
+                  <!-- JS Injectable Store Orders -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Columna Derecha: Live Zone Courier Tracker -->
+          <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <h3 class="card-title">🛵 Tracker de Repartidores por Zona</h3>
+              <p style="color: var(--gray-medium); font-size: 0.8rem; margin-bottom: 16px;">Visualiza en tiempo real en qué sector se encuentra el courier de tu pedido.</p>
+              
+              <!-- Map representation -->
+              <div class="map-mockup" style="height: 220px; margin-bottom: 16px;" id="store-tracking-map-container">
+                <svg class="map-bg" viewBox="0 0 600 350" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="600" height="350" fill="#f1f5f9"/>
+                  <!-- Santo Domingo Sectors layout mockup lines -->
+                  <path d="M0 80 H600 M0 180 H600 M0 280 H600 M120 0 V350 M280 0 V350 M440 0 V350" stroke="#cbd5e1" stroke-width="3" stroke-dasharray="6 4"/>
+                  <!-- Coastal line -->
+                  <path d="M0 310 C150 315 350 330 600 305 V350 H0 V310 Z" fill="#93c5fd" opacity="0.6"/>
+                  <!-- Courier location pulse indicator -->
+                  <circle cx="280" cy="180" r="12" fill="var(--primary)" opacity="0.15" class="map-pulse"/>
+                  <circle cx="280" cy="180" r="6" fill="var(--primary)"/>
+                </svg>
+                <div class="map-pin" style="left: 280px; top: 180px;">
+                  <div class="map-pin-icon" style="background-color: var(--primary);">🛵</div>
+                  <div class="map-pin-label" id="map-courier-zone-label">Carlos M. - Naco</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Active Courier Status Info Widget -->
+            <div class="courier-tracker-status">
+              <div class="courier-pulse-dot"></div>
+              <div class="courier-status-text">
+                <h4 id="tracker-courier-name">Asignando Courier...</h4>
+                <p id="tracker-courier-details">Estado: Localizando sector en tiempo real</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Create Order Modal for Store Owner (With Fulfillment toggle) -->
+  <div class="modal-overlay" id="modal-create-order-store">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 style="font-size: 1.25rem;">📦 Crear Nuevo Envío</h3>
+        <button class="modal-close" id="btn-close-modal-store">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="store-create-order-form">
+          
+          <!-- Product Selector -->
+          <div class="form-group">
+            <label for="order-product-select">Selecciona el Producto</label>
+            <select id="order-product-select" required>
+              <option value="" disabled selected>-- Elige un producto de tu inventario --</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="store-cust-name">Nombre del Cliente</label>
+            <input type="text" id="store-cust-name" placeholder="Ej: Juan Pérez" required>
+          </div>
+          <div class="form-group">
+            <label for="store-cust-phone">Teléfono del Cliente</label>
+            <input type="tel" id="store-cust-phone" placeholder="Ej: +1 809-555-1234" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="store-cust-address">Dirección de Entrega</label>
+              <input type="text" id="store-cust-address" placeholder="Calle, Número, Res." required>
+            </div>
+            <div class="form-group">
+              <label for="store-cust-city">Ciudad / Sector</label>
+              <select id="store-cust-city" required>
+                <option value="Santo Domingo - Naco">Naco (Santo Domingo)</option>
+                <option value="Santo Domingo - Bella Vista">Bella Vista (Santo Domingo)</option>
+                <option value="Santo Domingo - Piantini">Piantini (Santo Domingo)</option>
+                <option value="Santo Domingo - Zona Colonial">Zona Colonial (Santo Domingo)</option>
+                <option value="Santiago - Centro">Centro (Santiago)</option>
+              </select>
+            </div>
+          </div>
+          
+          <!-- Fulfillment sliding toggle -->
+          <div class="toggle-container">
+            <div class="toggle-switch">
+              <input type="checkbox" id="store-fulfillment-toggle">
+              <span class="slider-toggle"></span>
+            </div>
+            <div>
+              <span class="toggle-label-text">Servicio de Fulfillment de EnkargoRD (+RD$40)</span>
+              <span class="toggle-description">Nosotros empacamos, protegemos y preparamos tu producto por ti.</span>
+            </div>
+          </div>
+
+          <div class="form-row" style="margin-top: 12px; border-top: 1px solid var(--gray-light); padding-top: 16px;">
+            <div class="form-group">
+              <label for="store-ship-cost">Costo de Envío Estándar (RD$)</label>
+              <input type="number" id="store-ship-cost" min="50" value="250" required>
+            </div>
+          </div>
+
+          <!-- Dynamic Financial Breakdown for Store Modal -->
+          <div class="financial-preview">
+            <h4>📊 Desglose Financiero Estimado</h4>
+            <div class="preview-grid">
+              <div class="preview-item">
+                <span>Costo del Producto:</span>
+                <span id="store-preview-prod" style="font-weight: 600;">RD$0.00</span>
+              </div>
+              <div class="preview-item">
+                <span>Costo del Envío:</span>
+                <span id="store-preview-ship">RD$250.00</span>
+              </div>
+              <div class="preview-item">
+                <span>Cargo por Fulfillment:</span>
+                <span id="store-preview-fulfillment" style="color: var(--warning); font-weight: 600;">RD$0.00</span>
+              </div>
+              <div class="preview-item">
+                <span>Comisión de 'Polanco':</span>
+                <span id="store-preview-polanco" style="color: var(--primary); font-weight: 600;">RD$50.00</span>
+              </div>
+              <div class="preview-item">
+                <span>Comisión de Transportadora:</span>
+                <span id="store-preview-logistics" style="color: var(--info); font-weight: 600;">RD$200.00</span>
+              </div>
+              <div class="preview-item" style="grid-column: span 2; border-top: 1px solid #d1d5db; padding-top: 12px; margin-top: 8px;">
+                <span>Total Recaudado (COD):</span>
+                <span id="store-preview-collected" style="font-size: 1.1rem; color: var(--dark);">RD$0.00</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="btn-cancel-store-form">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Registrar Envío</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shipping Label Render Modal Container (Used for clean print template isolating the label) -->
+  <div class="modal-overlay" id="modal-label-printer">
+    <div class="modal-container" style="max-width: 480px; padding: 24px;">
+      <div class="modal-header" style="border-bottom: none; padding: 0 0 16px 0;">
+        <h3 style="font-size: 1.15rem;">🏷️ Vista Previa de Etiqueta</h3>
+        <button class="modal-close" id="btn-close-printer">&times;</button>
+      </div>
+      
+      <div id="printable-label-area">
+        <!-- Dyn. Shipping Label printed here -->
+      </div>
+      
+      <div class="form-actions" style="margin-top: 24px;">
+        <button type="button" class="btn btn-secondary" id="btn-close-printer-cancel">Cerrar</button>
+        <button type="button" class="btn btn-primary" onclick="window.print()">
+          🖨️ Imprimir Etiqueta
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast system -->
+  <div class="toast" id="toast">
+    <span class="toast-icon">🚀</span>
+    <span class="toast-message">Notificación del sistema</span>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

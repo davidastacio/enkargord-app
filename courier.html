@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Panel de Repartidor Móvil | Enkargord</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="courier-mobile-body">
+
+  <div class="courier-mobile-container">
+    <!-- Header -->
+    <header class="courier-mobile-header">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <img src="logo-submark.svg" alt="Logo" style="height: 32px; width: auto;">
+        <span style="font-family: var(--font-display); font-weight: 800; font-size: 1.15rem; letter-spacing: 0.5px;">Enkargo<span style="color: var(--primary);">RD</span></span>
+      </div>
+      <div>
+        <select id="courier-user-select" style="padding: 4px 8px; font-size: 0.75rem; background-color: var(--dark-soft); color: var(--white); border: 1px solid var(--gray-dark); border-radius: var(--radius-sm);">
+          <!-- Populated dynamically with registered couriers -->
+        </select>
+      </div>
+    </header>
+
+    <!-- Content Wrapper -->
+    <div class="courier-mobile-content">
+      
+      <!-- GPS Geo Tracker widget -->
+      <div class="gps-coords-badge">
+        <div class="gps-pulse-dot"></div>
+        <span id="gps-status-text">📡 Capturando señal GPS...</span>
+      </div>
+
+      <!-- Main active delivery panel -->
+      <div id="courier-active-delivery-container">
+        <!-- JS Injectable Active Order Card -->
+      </div>
+
+      <!-- No Deliveries placeholder (Default hidden / toggled) -->
+      <div id="courier-no-deliveries-placeholder" style="text-align: center; padding: 48px 24px; display: none;">
+        <div style="font-size: 4rem; margin-bottom: 16px;">🛵</div>
+        <h3 style="font-size: 1.2rem; margin-bottom: 8px;">¡Todo al día!</h3>
+        <p style="color: var(--gray-medium); font-size: 0.9rem; line-height: 1.5;">No tienes entregas activas asignadas en tránsito por el Administrador. Quédate a la espera de nuevos despachos.</p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Toast system -->
+  <div class="toast" id="toast">
+    <span class="toast-icon">🚀</span>
+    <span class="toast-message">Notificación</span>
+  </div>
+
+  <!-- Injecting app.js containing script logic -->
+  <script src="app.js"></script>
+</body>
+</html>

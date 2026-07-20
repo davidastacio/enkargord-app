@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 180" width="100%" height="100%">
+  <defs>
+    <!-- Gradients for 3D box effect -->
+    <linearGradient id="mainRed" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff1a24" />
+      <stop offset="100%" stop-color="#d30911" />
+    </linearGradient>
+    <linearGradient id="darkRed" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#b0070d" />
+      <stop offset="100%" stop-color="#7a0004" />
+    </linearGradient>
+    <linearGradient id="lightRed" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff4d55" />
+      <stop offset="100%" stop-color="#e60f18" />
+    </linearGradient>
+  </defs>
+
+  <!-- Left Speed Lines -->
+  <!-- Top Speed Line -->
+  <rect x="50" y="52" width="45" height="11" rx="5.5" fill="#d30911" />
+  
+  <!-- Middle Speed Line (Split: Left Dot + Right Dash) -->
+  <rect x="38" y="74" width="22" height="11" rx="5.5" fill="#d30911" />
+  <rect x="68" y="74" width="16" height="11" rx="5.5" fill="#d30911" />
+  
+  <!-- Bottom Speed Line -->
+  <rect x="52" y="96" width="26" height="11" rx="5.5" fill="#d30911" />
+
+  <!-- 3D Box Body -->
+  <!-- Main Face of the Box (with cut-out E) -->
+  <path d="M106 42 C100 42 96 46 96 52 V128 C96 134 100 138 106 138 H172 L185 118 V62 L172 42 Z" fill="url(#mainRed)" />
+  
+  <!-- Letter E cutout (white negative space inside main face) -->
+  <path d="M112 56 H158 V70 H130 V82 H152 V94 H130 V106 H160 V122 H112 Z" fill="#ffffff" />
+
+  <!-- 3D Right Facet (Shaded side flap) -->
+  <path d="M172 42 L185 62 V118 L172 138 V42 Z" fill="url(#darkRed)" stroke="#b0070d" stroke-width="0.5" />
+  
+  <!-- 3D Highlight flap overlay on the right face -->
+  <path d="M172 42 L182 56 L182 120 L172 138 Z" fill="url(#lightRed)" opacity="0.8" />
+  <path d="M172 74 L185 62 L185 88 L172 98 Z" fill="#ffffff" opacity="0.3" />
+</svg>

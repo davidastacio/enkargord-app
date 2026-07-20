@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Administrador | Enkargord</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Leaflet Map Assets -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+
+  <div class="dashboard-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <a href="index.html" class="logo" style="display: flex; align-items: center; justify-content: center; width: 100%; overflow: hidden;">
+          <img src="logo.png" alt="EnkargoRD Logo" style="height: 120px; margin: -22px 0; width: auto; max-width: 100%;">
+        </a>
+      </div>
+      
+      <ul class="sidebar-menu">
+        <li class="active"><a href="#" id="menu-dispatch-tab">📊 Dashboard Admin</a></li>
+        <li><a href="#" id="menu-fleet-tab">🛵 Flota Motoristas</a></li>
+        <li><a href="#" id="menu-settlement-tab">💰 Liquidaciones y Caja</a></li>
+        <li><a href="#">⚙️ Configuración</a></li>
+      </ul>
+      
+      <div class="sidebar-help">
+        <div class="sidebar-help-icon">🛡️</div>
+        <h4>Torre de Control</h4>
+        <p>Monitoreo logístico centralizado activo.</p>
+      </div>
+      
+      <div class="sidebar-footer">
+        <button class="logout-btn" onclick="window.location.href='index.html'">
+          <span>🚪</span> Cerrar sesión
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="dashboard-content">
+      <!-- Header -->
+      <header class="dashboard-header">
+        <div>
+          <h1 style="font-size: 1.8rem; margin-bottom: 4px;">¡Bienvenido, Administrador (Transportadora)!</h1>
+          <p style="color: var(--gray-medium); font-size: 0.95rem;">Panel centralizado de operaciones de EnkargoRD. Gestiona la flota, despacha y realiza cuadres.</p>
+        </div>
+        
+        <div style="display: flex; gap: 16px; align-items: center;">
+          <div class="user-profile">
+            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150" class="profile-avatar" alt="Gina Profile">
+            <div class="profile-info">
+              <h4>Gina</h4>
+              <span>Administrador (Logística)</span>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="btn-open-create-order">
+            ➕ Crear Pedido Directo
+          </button>
+        </div>
+      </header>
+
+      <!-- Tabs Navigation -->
+      <div class="tabs-navigation">
+        <button class="tab-btn active" id="tab-dispatch-btn">📍 Despacho y Torre de Control</button>
+        <button class="tab-btn" id="tab-fleet-btn">🛵 Gestión de Flota</button>
+        <button class="tab-btn" id="tab-settlement-btn">💰 Liquidación y Cuadre de Caja</button>
+      </div>
+
+      <!-- TAB 1: DESPACHO Y TORRE DE CONTROL -->
+      <div class="tab-content active" id="tab-dispatch-content">
+        <!-- Stats Cards (Summary of all operations) -->
+        <section class="dashboard-stats" style="margin-bottom: 24px;">
+          <div class="stat-card">
+            <div class="stat-info">
+              <h3>Pedidos Totales</h3>
+              <div class="stat-value" id="stat-total-orders">0</div>
+              <div class="stat-change up">↑ Activos <span style="color: var(--gray-medium); font-weight: normal;">en sistema</span></div>
+            </div>
+            <div class="stat-icon">🛍️</div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-info">
+              <h3>En tránsito</h3>
+              <div class="stat-value" id="stat-transit-orders">0</div>
+              <div class="stat-change up">↑ Motoristas <span style="color: var(--gray-medium); font-weight: normal;">en ruta</span></div>
+            </div>
+            <div class="stat-icon">🚚</div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-info">
+              <h3>Entregados</h3>
+              <div class="stat-value" id="stat-delivered-orders">0</div>
+              <div class="stat-change up">↑ Completados <span style="color: var(--gray-medium); font-weight: normal;">hoy</span></div>
+            </div>
+            <div class="stat-icon">✅</div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-info">
+              <h3>Caja en Calle</h3>
+              <div class="stat-value" id="stat-total-earnings">RD$0</div>
+              <div class="stat-change up">↑ Dinero <span style="color: var(--gray-medium); font-weight: normal;">por liquidar</span></div>
+            </div>
+            <div class="stat-icon">💰</div>
+          </div>
+        </section>
+
+        <!-- Bandeja de Despacho Manual (Pedidos de tiendas sin asignar) -->
+        <div class="card" style="margin-bottom: 32px;">
+          <div class="card-header">
+            <h3 class="card-title">📥 Bandeja de Entrada Central: Despacho de Pedidos</h3>
+            <span style="font-size: 0.85rem; color: var(--gray-medium);">Asigna manualmente motoristas de la flota a los envíos entrantes de las tiendas</span>
+          </div>
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tracking</th>
+                  <th>Tienda</th>
+                  <th>Cliente</th>
+                  <th>Dirección / Sector</th>
+                  <th>Fulfillment</th>
+                  <th>Total Recaudar</th>
+                  <th>Asignar Repartidor</th>
+                  <th style="text-align: right;">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="dispatch-inbox-body">
+                <!-- JS populated unassigned orders -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Torre de Control (Map & Live monitoring) -->
+        <div class="dashboard-grid-main">
+          
+          <!-- Left side: Realtime active courier map tracker -->
+          <div style="display: flex; flex-direction: column; gap: 24px;">
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title">🗺️ Mapa Satelital: Torre de Control Logístico</h3>
+                <span style="font-size: 0.85rem; color: var(--primary); font-weight: bold;">● Transmisión en vivo</span>
+              </div>
+              <div id="map-leaflet" style="width: 100%; height: 380px; border-radius: var(--radius-md); border: 1px solid var(--gray-light); margin-top: 12px; z-index: 10;"></div>
+            </div>
+            
+            <!-- Active streets packages tracking -->
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title">📡 Monitoreo Activo de Pedidos en Calle</h3>
+              </div>
+              <div class="table-responsive">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Tracking ID</th>
+                      <th>Repartidor Asignado</th>
+                      <th>Ubicación Sector</th>
+                      <th>Cliente</th>
+                      <th>Estado Envío</th>
+                      <th style="text-align: right;">Simular Cambios de Ruta</th>
+                    </tr>
+                  </thead>
+                  <tbody id="monitoring-orders-body">
+                    <!-- JS Injected active transit packages -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Side: Chart & Couriers list -->
+          <div style="display: flex; flex-direction: column; gap: 24px;">
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title">📊 Estado de Pedidos</h3>
+              </div>
+              <div class="chart-container">
+                <div class="donut-chart-mock" id="chart-mock">
+                  <div class="donut-chart-inner-text">
+                    <h4 id="chart-total-val">0</h4>
+                    <p>pedidos</p>
+                  </div>
+                </div>
+                <div class="legend-list">
+                  <div class="legend-item">
+                    <div class="legend-label">
+                      <span class="legend-dot delivered"></span>
+                      <span>Entregados</span>
+                    </div>
+                    <strong id="lbl-delivered">0 (0%)</strong>
+                  </div>
+                  <div class="legend-item">
+                    <div class="legend-label">
+                      <span class="legend-dot transit"></span>
+                      <span>En tránsito</span>
+                    </div>
+                    <strong id="lbl-transit">0 (0%)</strong>
+                  </div>
+                  <div class="legend-item">
+                    <div class="legend-label">
+                      <span class="legend-dot pending"></span>
+                      <span>Pendientes</span>
+                    </div>
+                    <strong id="lbl-pending">0 (0%)</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- List of all recent orders in general -->
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title">📦 Historial General de Pedidos</h3>
+              </div>
+              <div class="table-responsive">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Tracking ID</th>
+                      <th>Cliente</th>
+                      <th>Estado</th>
+                      <th>Courier</th>
+                      <th style="text-align: right;">Monto</th>
+                    </tr>
+                  </thead>
+                  <tbody id="orders-table-body">
+                    <!-- JS Injected orders -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: GESTIÓN DE FLOTA (MENSAJEROS) -->
+      <div class="tab-content" id="tab-fleet-content">
+        <div class="product-manager-grid">
+          
+          <!-- Create Courier -->
+          <div class="card">
+            <h3 class="card-title" style="margin-bottom: 16px;">🛵 Registrar Nuevo Mensajero</h3>
+            <form id="fleet-add-courier-form">
+              <div class="form-group">
+                <label for="courier-form-name">Nombre Completo del Repartidor</label>
+                <input type="text" id="courier-form-name" placeholder="Ej: Roberto Gómez" required>
+              </div>
+              <div class="form-group">
+                <label for="courier-form-phone">Teléfono Móvil (WhatsApp)</label>
+                <input type="tel" id="courier-form-phone" placeholder="Ej: +1 809-555-4433" required>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="courier-form-vehicle">Tipo de Vehículo</label>
+                  <select id="courier-form-vehicle">
+                    <option value="Motocicleta">🏍️ Motocicleta (Envío Rápido)</option>
+                    <option value="Carro">🚗 Vehículo Cerrado (Carga Pesada)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="courier-form-plate">Placa / Registro</label>
+                  <input type="text" id="courier-form-plate" placeholder="Ej: K-998877" required>
+                </div>
+              </div>
+              
+              <div class="form-row" style="margin-top: 12px; border-top: 1px solid var(--gray-light); padding-top: 16px;">
+                <div class="form-group">
+                  <label for="courier-form-user">Usuario de Acceso</label>
+                  <input type="text" id="courier-form-user" placeholder="Ej: roberto01" required>
+                </div>
+                <div class="form-group">
+                  <label for="courier-form-pass">Contraseña del Courier</label>
+                  <input type="password" id="courier-form-pass" placeholder="••••••" required>
+                </div>
+              </div>
+              
+              <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 16px;">Crear Cuenta de Motorista</button>
+            </form>
+          </div>
+
+          <!-- Couriers Grid -->
+          <div class="card">
+            <h3 class="card-title" style="margin-bottom: 16px;">👥 Flota de Motoristas Activos</h3>
+            <div class="fleet-grid" id="fleet-couriers-list">
+              <!-- JS Injected Couriers -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: LIQUIDACIÓN Y CUADRE DE CAJA -->
+      <div class="tab-content" id="tab-settlement-content">
+        <div style="display: flex; flex-direction: column; gap: 24px;">
+          
+          <!-- Consolidated settlements metrics -->
+          <div class="settlement-summary-box">
+            <div>
+              <h4 style="color: var(--gray-medium); font-size: 0.85rem; text-transform: uppercase; margin-bottom: 8px;">Caja Recaudada por Motoristas (Efectivo)</h4>
+              <h2 id="settle-val-collected" style="font-size: 2.5rem; font-family: var(--font-display); font-weight: 800; color: var(--success);">RD$0.00</h2>
+              <p style="font-size: 0.85rem; color: var(--gray-medium); margin-top: 4px;">Recaudación consolidada de pedidos entregados hoy.</p>
+            </div>
+            
+            <div class="preview-grid" style="border-left: 1px solid var(--gray-light); padding-left: 24px;">
+              <div class="preview-item">
+                <span>Liquidación a Tiendas (Costo Producto):</span>
+                <strong id="settle-val-store">RD$0.00</strong>
+              </div>
+              <div class="preview-item">
+                <span>Costo Total de Envíos:</span>
+                <strong id="settle-val-shipping">RD$0.00</strong>
+              </div>
+              <div class="preview-item">
+                <span>Comisión Plataforma 'Polanco' (RD$50/pedido):</span>
+                <strong id="settle-val-polanco" style="color: var(--primary);">RD$0.00</strong>
+              </div>
+              <div class="preview-item">
+                <span>Ganancia Neta Transportadora:</span>
+                <strong id="settle-val-transportadora" style="color: var(--info);">RD$0.00</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- List of delivered packages ready for cash reconciliation -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">✅ Envíos Entregados Listos para Liquidación</h3>
+              <button class="btn btn-primary" id="btn-close-cashbox">📥 Cerrar Caja del Día</button>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tracking</th>
+                    <th>Tienda</th>
+                    <th>Repartidor</th>
+                    <th>Costo Producto</th>
+                    <th>Envío</th>
+                    <th>Fulfillment</th>
+                    <th>Polanco (RD$50)</th>
+                    <th>Transportadora Net</th>
+                    <th style="text-align: right;">Recaudación COD</th>
+                  </tr>
+                </thead>
+                <tbody id="settlement-table-body">
+                  <!-- JS Injected settled orders -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Create Order Modal (Manual admin order creation) -->
+  <div class="modal-overlay" id="modal-create-order">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 style="font-size: 1.25rem;">📝 Crear Nuevo Pedido Directo</h3>
+        <button class="modal-close" id="btn-close-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="create-order-form">
+          <div class="form-group">
+            <label for="cust-name">Nombre del Cliente</label>
+            <input type="text" id="cust-name" placeholder="Ej: Juan Pérez" required>
+          </div>
+          <div class="form-group">
+            <label for="cust-phone">Teléfono de Contacto</label>
+            <input type="tel" id="cust-phone" placeholder="Ej: +1 809-555-1234" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="cust-address">Dirección de Entrega</label>
+              <input type="text" id="cust-address" placeholder="Calle, Número, Res." required>
+            </div>
+            <div class="form-group">
+              <label for="cust-city">Ciudad / Sector</label>
+              <select id="cust-city" required>
+                <option value="Santo Domingo - Naco">Naco (Santo Domingo)</option>
+                <option value="Santo Domingo - Bella Vista">Bella Vista (Santo Domingo)</option>
+                <option value="Santo Domingo - Piantini">Piantini (Santo Domingo)</option>
+                <option value="Santo Domingo - Zona Colonial">Zona Colonial (Santo Domingo)</option>
+                <option value="Santiago - Centro">Santiago - Centro</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="form-row" style="margin-top: 12px; border-top: 1px solid var(--gray-light); padding-top: 16px;">
+            <div class="form-group">
+              <label for="prod-cost">Costo del Producto (RD$)</label>
+              <input type="number" id="prod-cost" placeholder="Monto producto" min="0" required>
+            </div>
+            <div class="form-group">
+              <label for="ship-cost">Costo de Envío (RD$)</label>
+              <input type="number" id="ship-cost" placeholder="Tarifa envío" min="50" value="250" required>
+            </div>
+          </div>
+
+          <!-- Automatic Financial Breakdown Section -->
+          <div class="financial-preview">
+            <h4>📊 Desglose Financiero Automático</h4>
+            <div class="preview-grid">
+              <div class="preview-item">
+                <span>Costo del Producto (Tienda):</span>
+                <span id="val-store" style="font-weight: 600;">RD$0.00</span>
+              </div>
+              <div class="preview-item">
+                <span>Costo de Envío:</span>
+                <span id="val-shipping" style="font-style: italic; color: var(--gray-medium);">Verificado arriba</span>
+              </div>
+              <div class="preview-item">
+                <span>Comisión de 'Polanco':</span>
+                <span id="val-polanco" style="color: var(--primary); font-weight: 600;">RD$50.00</span>
+              </div>
+              <div class="preview-item">
+                <span>Comisión Transportadora:</span>
+                <span id="val-logistics" style="color: var(--info); font-weight: 600;">RD$0.00</span>
+              </div>
+              <div class="preview-item" style="grid-column: span 2; border-top: 1px solid #d1d5db; padding-top: 12px; margin-top: 8px;">
+                <span>Total a Recaudar (COD):</span>
+                <span id="val-collected" style="font-size: 1.1rem; color: var(--dark);">RD$0.00</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="btn-cancel-form">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Registrar en Bandeja</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Toast Notification -->
+  <div class="toast" id="toast">
+    <span class="toast-icon">🚀</span>
+    <span class="toast-message">Notificación del sistema</span>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
