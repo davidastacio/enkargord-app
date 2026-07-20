@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+:root {
+  --background: #F8F9FB;
+  --foreground: #1e293b;
+  --primary: #d3121a;
+  --primary-hover: #b00f14;
+  --gray-light: #E7E7EC;
+  --gray-medium: #64748b;
+  --gray-dark: #334155;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --info: #3b82f6;
+  --white: #ffffff;
+}
+
+@theme {
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-gray-light: var(--gray-light);
+  --color-gray-medium: var(--gray-medium);
+  --color-gray-dark: var(--gray-dark);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', system-ui, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+/* Custom scrollbars for tables */
+.custom-scrollbar::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--gray-light);
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-medium);
+}
