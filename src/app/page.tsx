@@ -24,13 +24,13 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           
           {/* Logo on the left */}
-          <Link href="/" className="flex items-center -ml-6">
+          <Link href="/" className="flex items-center justify-center">
             <div className="relative w-72 h-24">
               <Image 
                 src="/logo.png" 
                 alt="EnkargoRD Logo" 
                 fill 
-                className="object-contain object-left" 
+                className="object-contain object-center" 
                 priority
               />
             </div>
