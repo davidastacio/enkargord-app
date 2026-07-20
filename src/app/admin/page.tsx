@@ -510,7 +510,7 @@ export default function AdminDashboard() {
         <div>
           {/* Logo Brand Header */}
           <div className="p-6 border-b border-[#E7E7EC] flex items-center">
-            <div className="relative w-40 h-14">
+            <div className="relative w-52 h-18">
               <Image 
                 src="/logo.png" 
                 alt="EnkargoRD Logo" 
