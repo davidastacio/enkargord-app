@@ -19,7 +19,9 @@ import {
   AlertTriangle,
   UserCheck,
   Building,
-  Map
+  Map,
+  Shield,
+  Wrench
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import MapComponent from '@/components/MapComponent';
@@ -593,6 +595,34 @@ export default function AdminDashboard() {
               <Settings size={18} />
               Configuración
             </button>
+
+            {/* Divider */}
+            <div className="my-2 border-t border-[#E7E7EC]" />
+            <p className="px-4 text-[9px] font-extrabold text-slate-400 tracking-widest uppercase mb-1">Módulos operativos</p>
+
+            <Link
+              href="/admin/mensajeros"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            >
+              <UserCheck size={18} />
+              Gestión de Mensajeros
+            </Link>
+
+            <Link
+              href="/admin/operaciones"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            >
+              <Wrench size={18} />
+              Config. de Tarifas
+            </Link>
+
+            <Link
+              href="/admin/mis-entregas"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            >
+              <Shield size={18} />
+              Modo Repartidor
+            </Link>
           </nav>
         </div>
 

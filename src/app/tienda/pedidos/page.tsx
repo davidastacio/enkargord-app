@@ -7,6 +7,9 @@ import {
   Copy
 } from 'lucide-react';
 import Link from 'next/link';
+import { collection, query, where, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 interface OrderRow {
   trackingId: string;
@@ -21,39 +24,76 @@ interface OrderRow {
 }
 
 export default function StoreOrdersList() {
+  const { profile } = useAuth();
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
 
-  // Load from local storage
+  // Load from Firestore in real-time
   useEffect(() => {
-    const local = localStorage.getItem('enkargord_orders');
-    if (local) {
-      const parsed = JSON.parse(local);
-      const mapped = parsed.map((o: any) => ({
-        trackingId: o.trackingId,
-        customerName: o.customer.name,
-        customerPhone: o.customer.phone || 'N/A',
-        address: o.deliveryAddress.addressLine,
-        packageType: o.packageInfo?.type || 'Paquete pequeño',
-        status: o.status === 'in_transit' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
-        amount: o.financials.totalCollected,
-        courierName: o.courierName,
-        date: o.createdAt ? o.createdAt.split('T')[0] : '2026-07-20'
-      }));
-      setOrders(mapped);
-    }
-  }, []);
-
-  const handleCancelOrder = (id: string) => {
-    if (confirm(`¿Estás seguro de que deseas cancelar la orden #${id}?`)) {
+    if (profile?.uid) {
+      const q = query(collection(db, 'orders'), where('storeId', '==', profile.uid));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const firestoreOrders = snapshot.docs.map((docSnap) => {
+          const o = docSnap.data();
+          return {
+            trackingId: o.trackingId,
+            customerName: o.customer.name,
+            customerPhone: o.customer.phone || 'N/A',
+            address: o.deliveryAddress.addressLine || o.deliveryAddress.fullAddress,
+            packageType: o.packageInfo?.type || 'Paquete pequeño',
+            status: o.status === 'in_transit' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
+            amount: o.financials.totalCollected,
+            courierName: o.courierName || 'No asignado',
+            date: o.createdAt ? o.createdAt.split('T')[0] : '2026-07-20'
+          };
+        });
+        setOrders(firestoreOrders as OrderRow[]);
+      }, (error) => {
+        console.error("Error listening to store orders:", error);
+      });
+      return () => unsubscribe();
+    } else {
+      // Fallback to local storage if no user profile is loaded yet
       const local = localStorage.getItem('enkargord_orders');
       if (local) {
         const parsed = JSON.parse(local);
-        const filtered = parsed.filter((o: any) => o.trackingId !== id);
-        localStorage.setItem('enkargord_orders', JSON.stringify(filtered));
+        const mapped = parsed.map((o: any) => ({
+          trackingId: o.trackingId,
+          customerName: o.customer.name,
+          customerPhone: o.customer.phone || 'N/A',
+          address: o.deliveryAddress.addressLine || o.deliveryAddress.fullAddress,
+          packageType: o.packageInfo?.type || 'Paquete pequeño',
+          status: o.status === 'in_transit' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
+          amount: o.financials.totalCollected,
+          courierName: o.courierName || 'No asignado',
+          date: o.createdAt ? o.createdAt.split('T')[0] : '2026-07-20'
+        }));
+        setOrders(mapped);
+      }
+    }
+  }, [profile]);
+
+  const handleCancelOrder = async (id: string) => {
+    if (confirm(`¿Estás seguro de que deseas cancelar la orden #${id}?`)) {
+      try {
+        // 1. Delete from Firestore database
+        await deleteDoc(doc(db, 'orders', id));
+
+        // 2. Sync localStorage cache
+        const local = localStorage.getItem('enkargord_orders');
+        if (local) {
+          const parsed = JSON.parse(local);
+          const filtered = parsed.filter((o: any) => o.trackingId !== id);
+          localStorage.setItem('enkargord_orders', JSON.stringify(filtered));
+        }
+
+        // 3. Fallback manual update in state
         setOrders(orders.filter(o => o.trackingId !== id));
         alert(`Orden #${id} cancelada.`);
+      } catch (error) {
+        console.error("Error canceling order:", error);
+        alert("Error al cancelar la orden de la base de datos.");
       }
     }
   };

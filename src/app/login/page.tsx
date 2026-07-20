@@ -6,6 +6,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Mail, HelpCircle } from 'lucide-react';
 
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import { useAuth } from '@/hooks/useAuth';
+
 import AuthHeader from '@/components/auth/AuthHeader';
 import AuthVisual from '@/components/auth/AuthVisual';
 import PasswordField from '@/components/auth/PasswordField';
@@ -15,6 +19,7 @@ import FormError from '@/components/auth/FormError';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login } = useAuth();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -25,7 +30,7 @@ export default function LoginPage() {
   const [identifierError, setIdentifierError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setIdentifierError(null);
@@ -46,27 +51,56 @@ export default function LoginPage() {
 
     setIsLoading(true);
 
-    // Simulate authentication API request
-    setTimeout(() => {
-      setIsLoading(false);
-      const cleanId = identifier.toLowerCase().trim();
+    try {
+      let emailToAuth = identifier.trim();
 
-      if (cleanId.includes("admin")) {
+      // If it looks like a phone number (digits, dashes, parens), resolve it to email
+      const isPhonePattern = /^[0-9\-()+ ]+$/.test(emailToAuth) && emailToAuth.replace(/\D/g, '').length >= 7;
+      if (isPhonePattern) {
+        const cleanedPhone = emailToAuth.replace(/\D/g, '');
+        // Search user profile by phone in Firestore
+        const q = query(collection(db, 'users'), where('phone', '==', cleanedPhone));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          const userDoc = querySnapshot.docs[0];
+          emailToAuth = userDoc.data().email;
+        } else {
+          // Try also searching by raw digits without formatting if not found
+          const q2 = query(collection(db, 'users'), where('phone', '==', emailToAuth));
+          const querySnapshot2 = await getDocs(q2);
+          if (!querySnapshot2.empty) {
+            emailToAuth = querySnapshot2.docs[0].data().email;
+          }
+        }
+      }
+
+      // Perform real auth
+      const userProfile = await login(emailToAuth, password);
+
+      // Redirect depending on user role
+      if (userProfile.role === 'Admin') {
         router.push('/admin');
-      } else if (cleanId.includes("tienda")) {
-        alert("Autenticado con éxito. Redirigiendo al panel correspondiente de Tienda...");
-        router.push('/');
-      } else if (cleanId.includes("motorista")) {
-        alert("Autenticado con éxito. Redirigiendo al panel de Motorista...");
-        router.push('/');
-      } else if (cleanId === "error@enkargord.com") {
-        setErrorMsg("Las credenciales ingresadas son incorrectas. Por favor, inténtelo de nuevo.");
+      } else if (userProfile.role === 'Tienda') {
+        router.push('/tienda');
+      } else if (userProfile.role === 'Motorista') {
+        router.push('/motorista');
       } else {
-        // Default customer login
-        alert("Autenticado con éxito como Cliente. Redirigiendo al panel del cliente...");
         router.push('/');
       }
-    }, 1500);
+    } catch (error: any) {
+      console.error('Login error:', error);
+      let errMsg = 'Las credenciales ingresadas son incorrectas o el usuario no existe.';
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+        errMsg = 'El correo o la contraseña son incorrectos.';
+      } else if (error.code === 'auth/invalid-email') {
+        errMsg = 'El formato del correo electrónico ingresado no es válido.';
+      } else if (error.message) {
+        errMsg = error.message;
+      }
+      setErrorMsg(errMsg);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

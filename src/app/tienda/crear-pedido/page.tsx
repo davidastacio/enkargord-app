@@ -20,6 +20,9 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import DeliveryLocationMap from '@/components/DeliveryLocationMap';
+import { collection, doc, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import { useAuth } from '@/hooks/useAuth';
 import {
   PROVINCES,
   MUNICIPALITIES,
@@ -35,6 +38,7 @@ import {
 
 export default function CreateOrder() {
   const router = useRouter();
+  const { profile } = useAuth();
 
   // SECTION 1 — DATOS DEL CLIENTE
   const [custName, setCustName] = useState('');
@@ -360,7 +364,7 @@ export default function CreateOrder() {
     triggerToast("✓ Ubicación GPS confirmada");
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const provName = PROVINCES.find(p => p.id === selectedProvId)?.name || '';
@@ -387,14 +391,12 @@ export default function CreateOrder() {
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
-
+    try {
       const localOrders = localStorage.getItem('enkargord_orders');
       const currentOrders = localOrders ? JSON.parse(localOrders) : [];
 
       const nextNumber = currentOrders.length > 0
-        ? Math.max(...currentOrders.map((o: any) => parseInt(o.trackingId.split('-')[1]) || 0)) + 1
+        ? Math.max(...currentOrders.map((o: any) => parseInt(o.trackingId?.split('-')[1]) || 0)) + 1
         : 1251;
 
       const pCost = requiresCod ? (parseFloat(collectAmount) || 0) : 0;
@@ -403,8 +405,8 @@ export default function CreateOrder() {
         id: `ENK-${nextNumber}`,
         trackingId: `ENK-${nextNumber}`,
         status: 'pending',
-        storeId: "STORE_01",
-        storeName: "Moda Express RD",
+        storeId: profile?.uid || "STORE_01",
+        storeName: profile?.name || "Moda Express RD",
         courierName: "No asignado",
         time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
         createdAt: new Date().toISOString(),
@@ -456,12 +458,21 @@ export default function CreateOrder() {
         }
       };
 
+      // 1. Save to Cloud Firestore
+      await setDoc(doc(db, 'orders', newOrder.id), newOrder);
+
+      // 2. Synchronize Cache in LocalStorage
       const updated = [newOrder, ...currentOrders];
       localStorage.setItem('enkargord_orders', JSON.stringify(updated));
 
       triggerToast(`Guía logística #${newOrder.trackingId} registrada.`);
       router.push('/tienda/pedidos');
-    }, 1200);
+    } catch (err: any) {
+      console.error("Error creating order in Firestore:", err);
+      alert("Error al registrar el pedido en la base de datos: " + (err.message || err));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

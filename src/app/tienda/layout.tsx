@@ -18,6 +18,7 @@ import {
   Calendar,
   HelpCircle
 } from 'lucide-react';
+import RouteGuard from '@/components/auth/RouteGuard';
 
 export default function StoreLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -34,7 +35,8 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
   ];
 
   return (
-    <div className="min-h-screen bg-[#F8F9FB] flex font-sans text-slate-800 antialiased">
+    <RouteGuard allowedRoles={['Tienda', 'Admin']}>
+      <div className="min-h-screen bg-[#F8F9FB] flex font-sans text-slate-800 antialiased">
       
       {/* ==========================================
          LEFT SIDEBAR
@@ -168,5 +170,6 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
 
       </div>
     </div>
+    </RouteGuard>
   );
 }

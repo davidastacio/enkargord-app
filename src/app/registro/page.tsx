@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Mail, User, Phone, CheckSquare } from 'lucide-react';
 
+import { useAuth } from '@/hooks/useAuth';
+
 import AuthHeader from '@/components/auth/AuthHeader';
 import AuthVisual from '@/components/auth/AuthVisual';
 import PasswordField from '@/components/auth/PasswordField';
@@ -15,6 +17,7 @@ import FormError from '@/components/auth/FormError';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { registerUser } = useAuth();
   
   // Form states
   const [name, setName] = useState('');
@@ -55,7 +58,7 @@ export default function RegisterPage() {
     return cleaned.length === 10 && (cleaned.startsWith('809') || cleaned.startsWith('829') || cleaned.startsWith('849'));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setErrors({});
@@ -92,34 +95,25 @@ export default function RegisterPage() {
 
     setIsLoading(true);
 
-    // Simulate account registration
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      const cleanedPhone = phone.replace(/\D/g, '');
+      // Create user in Firebase Auth & Firestore
+      await registerUser(email, password, name, cleanedPhone, role);
       setIsVerificationSent(true);
-      
-      // Save new registration profile in mock users list
-      const localUsers = localStorage.getItem('enkargord_users');
-      const currentList = localUsers ? JSON.parse(localUsers) : [];
-      
-      const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-      const newUser = {
-        id: `USR-${Math.floor(Math.random() * 900) + 100}`,
-        name,
-        avatar: initials || "US",
-        email,
-        phone,
-        role,
-        regDate: new Date().toISOString().split('T')[0],
-        lastAccess: "Nunca",
-        status: "Pendiente" as const,
-        ordersCount: 0,
-        totalSpentOrCollected: 0,
-        address: "No registrada",
-        notes: "Registrado vía portal público. Pendiente de verificar correo."
-      };
-
-      localStorage.setItem('enkargord_users', JSON.stringify([newUser, ...currentList]));
-    }, 1500);
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      let errMsg = 'Ocurrió un error al registrar la cuenta. Por favor, inténtelo de nuevo.';
+      if (error.code === 'auth/email-already-in-use') {
+        errMsg = 'El correo electrónico ingresado ya está en uso por otra cuenta.';
+      } else if (error.code === 'auth/weak-password') {
+        errMsg = 'La contraseña ingresada es demasiado débil.';
+      } else if (error.message) {
+        errMsg = error.message;
+      }
+      setErrorMsg(errMsg);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const strength = getPasswordStrength();

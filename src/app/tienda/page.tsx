@@ -14,6 +14,9 @@ import {
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import MapComponent from '@/components/MapComponent';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 interface OrderRow {
   trackingId: string;
@@ -26,44 +29,61 @@ interface OrderRow {
 }
 
 export default function StoreDashboard() {
-  const [orders, setOrders] = useState<OrderRow[]>([
-    { trackingId: 'ENK-1250', customerName: 'Juan Pérez', address: 'Av. Winston Churchill, 45', status: 'in_transit', amount: 1250, courierName: 'Carlos M.', time: '10:30 AM' },
-    { trackingId: 'ENK-1249', customerName: 'María Rodríguez', address: 'C/ José Contreras, 12', status: 'delivered', amount: 980, courierName: 'Luis A.', time: '10:15 AM' },
-    { trackingId: 'ENK-1248', customerName: 'Pedro García', address: 'C/ El Conde, 98', status: 'pending', amount: 1100, courierName: 'Sin asignar', time: '09:58 AM' },
-    { trackingId: 'ENK-1247', customerName: 'Ana Martínez', address: 'Av. 27 de Febrero, 123', status: 'in_transit', amount: 1650, courierName: 'Yoselin V.', time: '09:42 AM' },
-    { trackingId: 'ENK-1246', customerName: 'Luis Gómez', address: 'C/ San Vicente de Paúl, 34', status: 'delivered', amount: 750, courierName: 'Carlos M.', time: '09:30 AM' }
-  ]);
+  const { profile } = useAuth();
+  const [orders, setOrders] = useState<OrderRow[]>([]);
 
-  // Load from local storage if exists
+  // Load from Firestore in real-time
   useEffect(() => {
-    const local = localStorage.getItem('enkargord_orders');
-    if (local) {
-      const parsed = JSON.parse(local);
-      // Map global orders list into store rows for preview
-      const mapped = parsed.map((o: any) => ({
-        trackingId: o.trackingId,
-        customerName: o.customer.name,
-        address: o.deliveryAddress.addressLine,
-        status: o.status === 'in_transit' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
-        amount: o.financials.totalCollected,
-        courierName: o.courierName,
-        time: o.time
-      })).slice(0, 5);
-      setOrders(mapped);
+    if (profile?.uid) {
+      const q = query(collection(db, 'orders'), where('storeId', '==', profile.uid));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const firestoreOrders = snapshot.docs.map((docSnap) => {
+          const o = docSnap.data();
+          return {
+            trackingId: o.trackingId,
+            customerName: o.customer.name,
+            address: o.deliveryAddress.addressLine || o.deliveryAddress.fullAddress,
+            status: o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
+            amount: o.financials.totalCollected,
+            courierName: o.courierName || 'No asignado',
+            time: o.time || 'N/A'
+          };
+        });
+        setOrders(firestoreOrders as OrderRow[]);
+      }, (error) => {
+        console.error("Error loading dashboard orders:", error);
+      });
+      return () => unsubscribe();
+    } else {
+      // Fallback to local storage if no user profile is loaded yet
+      const local = localStorage.getItem('enkargord_orders');
+      if (local) {
+        const parsed = JSON.parse(local);
+        const mapped = parsed.map((o: any) => ({
+          trackingId: o.trackingId,
+          customerName: o.customer.name,
+          address: o.deliveryAddress.addressLine || o.deliveryAddress.fullAddress,
+          status: o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
+          amount: o.financials.totalCollected,
+          courierName: o.courierName || 'No asignado',
+          time: o.time || 'N/A'
+        }));
+        setOrders(mapped);
+      }
     }
-  }, []);
+  }, [profile]);
 
-  // Stats calculation
-  const totalOrdersToday = 48;
-  const inTransitCount = orders.filter(o => o.status === 'in_transit').length + 15;
-  const deliveredCount = orders.filter(o => o.status === 'delivered').length + 24;
-  const totalSales = 68450;
+  // Stats calculation dynamically
+  const totalOrdersToday = orders.length;
+  const inTransitCount = orders.filter(o => o.status === 'in_transit').length;
+  const deliveredCount = orders.filter(o => o.status === 'delivered').length;
+  const totalSales = orders.filter(o => o.status === 'delivered').reduce((sum, o) => sum + o.amount, 0);
 
   // Chart data
   const chartData = [
-    { name: 'Entregados', value: deliveredCount, color: '#10b981' },
-    { name: 'En Tránsito', value: inTransitCount, color: '#f59e0b' },
-    { name: 'Pendientes', value: orders.filter(o => o.status === 'pending').length + 2, color: '#64748b' }
+    { name: 'Entregados', value: deliveredCount || 1, color: '#10b981' },
+    { name: 'En Tránsito', value: inTransitCount || 0, color: '#f59e0b' },
+    { name: 'Pendientes', value: orders.filter(o => o.status === 'pending').length || 0, color: '#64748b' }
   ];
 
   const totalChartSum = chartData.reduce((sum, item) => sum + item.value, 0);
