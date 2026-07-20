@@ -1,10 +1,8 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
-  Package, 
-  MapPin, 
   User, 
   Phone, 
   Mail, 
@@ -14,15 +12,27 @@ import {
   ArrowLeft,
   ShieldAlert,
   Calendar,
-  Layers,
-  HelpCircle,
   Link2,
   CheckCircle2,
-  Map,
-  X
+  X,
+  Search,
+  MapPin,
+  Map
 } from 'lucide-react';
 import Link from 'next/link';
 import DeliveryLocationMap from '@/components/DeliveryLocationMap';
+import {
+  PROVINCES,
+  MUNICIPALITIES,
+  MUNICIPAL_DISTRICTS,
+  SECTORS,
+  matchTerritoryName,
+  normalizeText,
+  Province,
+  Municipality,
+  MunicipalDistrict,
+  Sector
+} from '@/data/territory';
 
 export default function CreateOrder() {
   const router = useRouter();
@@ -33,22 +43,32 @@ export default function CreateOrder() {
   const [custPhoneAlt, setCustPhoneAlt] = useState('');
   const [custEmail, setCustEmail] = useState('');
 
-  // SECTION 2 — DATOS DE ENTREGA & UBICACIÓN COMPARTIDA
-  const [province, setProvince] = useState('Santo Domingo');
-  const [municipality, setMunicipality] = useState('Distrito Nacional');
-  const [sector, setSector] = useState('Naco');
-  const [deliveryAddress, setDeliveryAddress] = useState('');
-  const [reference, setReference] = useState('');
+  // SECTION 2 — DATOS DE ENTREGA ENCADENADOS
+  const [country] = useState('República Dominicana');
+  
+  const [selectedProvId, setSelectedProvId] = useState('PROV_01'); // Distrito Nacional por defecto
+  const [selectedMunId, setSelectedMunId] = useState('MUN_DN_01');
+  const [selectedDistId, setSelectedDistId] = useState('');
+  
+  const [sectorSearch, setSectorSearch] = useState('');
+  const [selectedSectorId, setSelectedSectorId] = useState('SEC_DN_01'); // Naco por defecto
+  const [selectedSectorName, setSelectedSectorName] = useState('Naco');
+  const [isCustomSector, setIsCustomSector] = useState(false);
+  const [isSectorDropdownOpen, setIsSectorDropdownOpen] = useState(false);
 
-  // Coordenadas e información de mapas
+  const [street, setStreet] = useState('');
+  const [streetNumber, setStreetNumber] = useState('');
+  const [reference, setReference] = useState('');
+  const [formattedAddress, setFormattedAddress] = useState('');
+
+  // Ubicación compartida y Coordenadas GPS
   const [sharedLocationUrl, setSharedLocationUrl] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [locationSource, setLocationSource] = useState<'manual_address' | 'whatsapp' | 'google_maps' | 'coordinates' | 'manual_map'>('manual_address');
   const [locationVerified, setLocationVerified] = useState(false);
-  const [formattedAddress, setFormattedAddress] = useState('');
 
-  // SECTION 3 — INFORMACIÓN LOGÍSTICA DEL PAQUETE
+  // SECTION 3 — INFORMACIÓN LOGÍSTICA
   const [packageType, setPackageType] = useState('Paquete pequeño');
   const [packagesCount, setPackagesCount] = useState('1');
   const [weight, setWeight] = useState('');
@@ -76,13 +96,33 @@ export default function CreateOrder() {
   const [receiverPhone, setReceiverPhone] = useState('');
   const [observations, setObservations] = useState('');
 
-  // UI status
+  // UI States
   const [isLoading, setIsLoading] = useState(false);
   const [isResolvingLocation, setIsResolvingLocation] = useState(false);
+  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'success' | 'warning' | 'error'>('idle');
   const [locationError, setLocationError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Diálogo de discrepancia de arrastre
+  const [pendingDragCoords, setPendingDragCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [dragAddressDetails, setDragAddressDetails] = useState<any>(null);
+
   const shippingFee = 200;
+
+  // Filtered dropdowns
+  const availableMunicipalities = MUNICIPALITIES.filter(m => m.provinceId === selectedProvId);
+  const availableDistricts = MUNICIPAL_DISTRICTS.filter(d => d.municipalityId === selectedMunId);
+  
+  const availableSectors = SECTORS.filter(s => {
+    const matchMun = s.municipalityId === selectedMunId;
+    const matchDist = !selectedDistId || s.municipalDistrictId === selectedDistId;
+    return matchMun && matchDist;
+  });
+
+  const filteredSectors = availableSectors.filter(s => 
+    normalizeText(s.name).includes(normalizeText(sectorSearch))
+  );
 
   const triggerToast = (message: string) => {
     setToastMessage(message);
@@ -91,6 +131,24 @@ export default function CreateOrder() {
     }, 4000);
   };
 
+  // Re-generate formatted address string on field modifications
+  useEffect(() => {
+    const provName = PROVINCES.find(p => p.id === selectedProvId)?.name || '';
+    const munName = MUNICIPALITIES.find(m => m.id === selectedMunId)?.name || '';
+    const sectorName = isCustomSector ? sectorSearch : (SECTORS.find(s => s.id === selectedSectorId)?.name || '');
+    
+    const parts = [];
+    if (street) parts.push(street);
+    if (streetNumber) parts.push(`#${streetNumber}`);
+    if (sectorName) parts.push(sectorName);
+    if (munName) parts.push(munName);
+    if (provName) parts.push(provName);
+    parts.push(country);
+
+    setFormattedAddress(parts.join(', '));
+  }, [selectedProvId, selectedMunId, selectedSectorId, sectorSearch, isCustomSector, street, streetNumber]);
+
+  // Resolve Location URL trigger
   const handleResolveLocation = async () => {
     if (!sharedLocationUrl.trim()) {
       setLocationError("Por favor pegue un enlace o coordenadas antes de cargar.");
@@ -98,6 +156,7 @@ export default function CreateOrder() {
     }
 
     setIsResolvingLocation(true);
+    setLocationStatus('loading');
     setLocationError(null);
 
     try {
@@ -116,32 +175,176 @@ export default function CreateOrder() {
       setLatitude(data.latitude);
       setLongitude(data.longitude);
       setLocationSource(data.source);
-      setFormattedAddress(data.formattedAddress);
-      setLocationVerified(true);
       
-      // Auto fill reverse-geocoded address suggestions if possible
-      if (data.formattedAddress) {
-        setReference(prev => prev ? prev : `Localizado vía GPS: ${data.formattedAddress}`);
-      }
+      // Auto-populate territorial fields using reverse geocode results
+      const details = data.details || {};
+      applyGeocodedFields(details);
 
+      setLocationVerified(true);
       triggerToast("Ubicación cargada correctamente.");
     } catch (err: any) {
+      setLocationStatus('error');
       setLocationError(err.message || "No pudimos reconocer este enlace de ubicación.");
     } finally {
       setIsResolvingLocation(false);
     }
   };
 
-  const handleMarkerDragEnd = (newLat: number, newLng: number) => {
-    setLatitude(newLat);
-    setLongitude(newLng);
-    setLocationSource('manual_map');
-    setFormattedAddress(`Ajuste manual en mapa: ${newLat.toFixed(5)}, ${newLng.toFixed(5)}`);
+  // Apply reverse geocoded details helper
+  const applyGeocodedFields = (details: any) => {
+    let warningFound = false;
+
+    // 1. Match Province
+    if (details.state || details.county) {
+      const matchedProv = matchTerritoryName(details.state || details.county, 'province');
+      const provObj = PROVINCES.find(p => p.name === matchedProv);
+      if (provObj) {
+        setSelectedProvId(provObj.id);
+      } else {
+        warningFound = true;
+      }
+    }
+
+    // 2. Match Municipality
+    if (details.city) {
+      const matchedMun = matchTerritoryName(details.city, 'municipality');
+      const munObj = MUNICIPALITIES.find(m => m.name === matchedMun);
+      if (munObj) {
+        setSelectedMunId(munObj.id);
+      } else {
+        warningFound = true;
+      }
+    }
+
+    // 3. Match Sector
+    if (details.suburb) {
+      const matchedSector = matchTerritoryName(details.suburb, 'sector');
+      const sectorObj = SECTORS.find(s => s.name === matchedSector);
+      if (sectorObj) {
+        setSelectedSectorId(sectorObj.id);
+        setSelectedSectorName(sectorObj.name);
+        setSectorSearch(sectorObj.name);
+        setIsCustomSector(false);
+      } else {
+        // Fallback: Custom sector option
+        setSectorSearch(details.suburb);
+        setIsCustomSector(true);
+        setSelectedSectorId('custom');
+        setSelectedSectorName(details.suburb);
+      }
+    } else {
+      warningFound = true;
+    }
+
+    // 4. Match Street & House number
+    if (details.road) {
+      setStreet(details.road);
+    }
+    if (details.houseNumber) {
+      setStreetNumber(details.houseNumber);
+    }
+
+    if (warningFound) {
+      setLocationStatus('warning');
+      setLocationError("No pudimos identificar con precisión el sector. Selecciónalo manualmente.");
+    } else {
+      setLocationStatus('success');
+    }
   };
 
-  const handleConfirmLocation = () => {
-    setLocationVerified(true);
-    triggerToast("Ubicación GPS confirmada.");
+  // Search Address on Map
+  const handleSearchAddressOnMap = async () => {
+    const provName = PROVINCES.find(p => p.id === selectedProvId)?.name || '';
+    const munName = MUNICIPALITIES.find(m => m.id === selectedMunId)?.name || '';
+    const sectorName = isCustomSector ? sectorSearch : (SECTORS.find(s => s.id === selectedSectorId)?.name || '');
+
+    if (!street.trim()) {
+      alert("Por favor ingrese al menos la calle o avenida para realizar la búsqueda.");
+      return;
+    }
+
+    setIsSearchingAddress(true);
+    setLocationStatus('loading');
+
+    try {
+      const res = await fetch('/api/location/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          street,
+          sector: sectorName,
+          municipality: munName,
+          province: provName,
+          country
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Dirección no encontrada.");
+      }
+
+      setLatitude(data.latitude);
+      setLongitude(data.longitude);
+      setLocationVerified(true);
+      setLocationStatus('success');
+      triggerToast("Dirección encontrada y fijada en el mapa.");
+    } catch (err: any) {
+      setLocationStatus('error');
+      alert(err.message || "No pudimos ubicar la dirección exacta. Ubícala arrastrando el pin.");
+    } finally {
+      setIsSearchingAddress(false);
+    }
+  };
+
+  // Draggable Marker callbacks
+  const handleMarkerDragEnd = async (newLat: number, newLng: number) => {
+    // Attempt reverse geocoding on drag
+    try {
+      const res = await fetch('/api/location/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: `${newLat}, ${newLng}` })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setPendingDragCoords({ lat: newLat, lng: newLng });
+        setDragAddressDetails(data.details);
+      } else {
+        // Fallback manual set coords directly
+        setLatitude(newLat);
+        setLongitude(newLng);
+        setLocationSource('manual_map');
+      }
+    } catch {
+      setLatitude(newLat);
+      setLongitude(newLng);
+      setLocationSource('manual_map');
+    }
+  };
+
+  const handleApplyDragFields = () => {
+    if (pendingDragCoords && dragAddressDetails) {
+      setLatitude(pendingDragCoords.lat);
+      setLongitude(pendingDragCoords.lng);
+      setLocationSource('manual_map');
+      applyGeocodedFields(dragAddressDetails);
+    }
+    setPendingDragCoords(null);
+    setDragAddressDetails(null);
+    triggerToast("Campos territoriales actualizados.");
+  };
+
+  const handleKeepDragFields = () => {
+    if (pendingDragCoords) {
+      setLatitude(pendingDragCoords.lat);
+      setLongitude(pendingDragCoords.lng);
+      setLocationSource('manual_map');
+    }
+    setPendingDragCoords(null);
+    setDragAddressDetails(null);
+    triggerToast("Ubicación movida. Cambios manuales preservados.");
   };
 
   const handleResetLocation = () => {
@@ -152,12 +355,17 @@ export default function CreateOrder() {
     setLocationSource('manual_address');
     setFormattedAddress('');
     setLocationError(null);
+    setLocationStatus('idle');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!custName.trim() || !custPhone.trim() || !deliveryAddress.trim() || !pickupDate) {
+    const provName = PROVINCES.find(p => p.id === selectedProvId)?.name || '';
+    const munName = MUNICIPALITIES.find(m => m.id === selectedMunId)?.name || '';
+    const sectorName = isCustomSector ? sectorSearch : (SECTORS.find(s => s.id === selectedSectorId)?.name || '');
+
+    if (!custName.trim() || !custPhone.trim() || !street.trim() || !pickupDate || !sectorName) {
       alert("Por favor rellene los campos obligatorios del envío.");
       return;
     }
@@ -198,19 +406,32 @@ export default function CreateOrder() {
           phone: custPhone,
           email: custEmail || undefined
         },
+        // Complete territorial parameters mapping
+        country,
+        provinceId: selectedProvId,
+        provinceName: provName,
+        municipalityId: selectedMunId,
+        municipalityName: munName,
+        municipalDistrictId: selectedDistId || undefined,
+        municipalDistrictName: selectedDistId ? MUNICIPAL_DISTRICTS.find(d => d.id === selectedDistId)?.name : undefined,
+        sectorId: selectedSectorId,
+        sectorName: sectorName,
+        isCustomSector,
+        street,
+        streetNumber,
+        reference,
+        formattedAddress,
         deliveryAddress: {
-          addressLine: deliveryAddress,
-          city: `${sector} (${province})`,
+          addressLine: formattedAddress,
+          city: `${sectorName} (${provName})`,
           coordinates: latitude && longitude ? { lat: latitude, lng: longitude } : {
-            lat: 18.4861 + (Math.random() - 0.5) * 0.03,
-            lng: -69.9312 + (Math.random() - 0.5) * 0.03
+            lat: 18.4861,
+            lng: -69.9312
           }
         },
-        // Logística y campos de geolocalización de privacidad solicitados
         deliveryLocationUrl: sharedLocationUrl || undefined,
         deliveryLatitude: latitude || undefined,
         deliveryLongitude: longitude || undefined,
-        deliveryFormattedAddress: formattedAddress || undefined,
         deliveryLocationSource: locationSource,
         deliveryLocationVerified: locationVerified,
         
@@ -251,7 +472,38 @@ export default function CreateOrder() {
         </div>
       )}
 
-      {/* Return Navigation */}
+      {/* Discrepancy drag popup prompt */}
+      {pendingDragCoords && dragAddressDetails && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
+          <div className="bg-white max-w-md w-full rounded-2xl p-6 shadow-2xl space-y-4 border border-[#E7E7EC] animate-scale-up">
+            <h4 className="font-extrabold text-slate-950 text-sm">📍 Ubicación Modificada en Mapa</h4>
+            <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+              La nueva ubicación contiene datos de dirección diferentes a los configurados. ¿Deseas actualizar la dirección del pedido con la del nuevo punto?
+            </p>
+            <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-mono text-slate-500">
+              {dragAddressDetails.road || "Calle desconocida"}, {dragAddressDetails.suburb || "Sector desconocido"}, {dragAddressDetails.city || "Ciudad"}
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleKeepDragFields}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs py-2.5 px-4 rounded-xl transition-all"
+              >
+                Mantener mis cambios
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyDragFields}
+                className="flex-1 bg-[#d3121a] hover:bg-[#b00f14] text-white font-extrabold text-xs py-2.5 px-4 rounded-xl transition-all shadow-md shadow-red-100"
+              >
+                Actualizar campos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
       <div className="flex items-center gap-4">
         <Link 
           href="/tienda"
@@ -262,7 +514,7 @@ export default function CreateOrder() {
         <div>
           <h2 className="text-xl font-extrabold text-slate-950 tracking-tight">Crear Guía de Envío</h2>
           <p className="text-xs text-slate-400 mt-1 font-medium">
-            Registra los datos de transporte y entrega bajo protección de privacidad comercial.
+            Registra los datos de transporte bajo protección de privacidad comercial de EnkargoRD.
           </p>
         </div>
       </div>
@@ -335,16 +587,13 @@ export default function CreateOrder() {
 
               <div className="space-y-1">
                 <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Correo Electrónico (Opcional)</label>
-                <div className="relative">
-                  <Mail size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input 
-                    type="email" 
-                    placeholder="cliente@correo.com"
-                    value={custEmail}
-                    onChange={(e) => setCustEmail(e.target.value)}
-                    className="w-full pl-11 pr-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-                  />
-                </div>
+                <input 
+                  type="email" 
+                  placeholder="cliente@correo.com"
+                  value={custEmail}
+                  onChange={(e) => setCustEmail(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
+                />
               </div>
 
             </div>
@@ -356,47 +605,37 @@ export default function CreateOrder() {
               2. Ubicación y Datos de Entrega
             </h3>
             
-            {/* UBICACIÓN COMPARTIDA INTEGRATION */}
+            {/* Ubicación compartida */}
             <div className="p-4 bg-slate-50 border border-[#E7E7EC] rounded-2xl space-y-4">
               <div className="space-y-1">
                 <div className="flex justify-between items-center">
                   <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
-                    Ubicación compartida (WhatsApp / Google Maps)
+                    Ubicación compartida
                   </label>
-                  {latitude && longitude && (
-                    <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
-                      <CheckCircle2 size={12} /> Ubicación cargada ({locationSource})
-                    </span>
-                  )}
+                  {locationStatus === 'loading' && <span className="text-[9px] text-[#d3121a] font-bold animate-pulse">📡 Obteniendo ubicación...</span>}
+                  {locationStatus === 'success' && <span className="text-[9px] text-emerald-600 font-bold">✓ Dirección encontrada</span>}
+                  {locationStatus === 'warning' && <span className="text-[9px] text-amber-600 font-bold">⚠️ Completa manualmente los datos faltantes</span>}
                 </div>
                 
                 <div className="flex gap-2">
-                  <div className="relative flex-grow">
-                    <Link2 size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input 
-                      type="text" 
-                      placeholder="Pega aquí el enlace de ubicación enviado por WhatsApp o Google Maps"
-                      value={sharedLocationUrl}
-                      onChange={(e) => setSharedLocationUrl(e.target.value)}
-                      className="w-full pl-11 pr-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-                    />
-                  </div>
+                  <input 
+                    type="text" 
+                    placeholder="Pega aquí el enlace de ubicación enviado por WhatsApp o Google Maps"
+                    value={sharedLocationUrl}
+                    onChange={(e) => setSharedLocationUrl(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
+                  />
                   <button
                     type="button"
                     onClick={handleResolveLocation}
                     disabled={isResolvingLocation}
-                    className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all flex items-center gap-2"
+                    className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shrink-0"
                   >
                     {isResolvingLocation ? "Cargando..." : "Cargar ubicación"}
                   </button>
                 </div>
-                
-                <span className="text-[9px] text-slate-400 font-bold block mt-1">
-                  Compatible con enlaces de Google Maps y ubicaciones compartidas por WhatsApp o coordenadas directas (ej: 18.4861, -69.9312).
-                </span>
               </div>
 
-              {/* Location error log */}
               {locationError && (
                 <div className="p-3 bg-red-50 text-red-600 text-[10px] font-bold rounded-xl border border-red-100 flex items-center justify-between">
                   <span>⚠️ {locationError}</span>
@@ -405,115 +644,237 @@ export default function CreateOrder() {
                   </button>
                 </div>
               )}
-
-              {/* Location map visualization */}
-              {latitude && longitude && (
-                <div className="space-y-3 animate-fade-in">
-                  <div className="w-full h-[250px] rounded-xl overflow-hidden relative">
-                    <DeliveryLocationMap 
-                      latitude={latitude} 
-                      longitude={longitude} 
-                      onMarkerDragEnd={handleMarkerDragEnd} 
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 border border-[#E7E7EC] rounded-xl">
-                    <div className="text-[10px] font-semibold text-slate-500 space-y-0.5">
-                      <div><strong>GPS:</strong> {latitude.toFixed(6)}, {longitude.toFixed(6)}</div>
-                      <div className="truncate max-w-[300px]"><strong>Dirección aproximada:</strong> {formattedAddress}</div>
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={handleResetLocation}
-                        className="bg-slate-50 hover:bg-slate-100 border border-[#E7E7EC] text-slate-600 font-bold text-xs px-3 py-2 rounded-lg transition-all"
-                      >
-                        Cambiar ubicación
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleConfirmLocation}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-2 rounded-lg transition-all"
-                      >
-                        Confirmar ubicación
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Selectores encadenados y datos territoriales */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">País</label>
+                <input 
+                  type="text" 
+                  disabled
+                  value={country}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-[#E7E7EC] rounded-xl text-xs font-semibold text-slate-400 focus:outline-none"
+                />
+              </div>
+
               <div className="space-y-1">
                 <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Provincia *</label>
-                <select 
-                  value={province}
-                  onChange={(e) => setProvince(e.target.value)}
+                <select
+                  value={selectedProvId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setSelectedProvId(id);
+                    // Cascade resets
+                    const filteredMuns = MUNICIPALITIES.filter(m => m.provinceId === id);
+                    if (filteredMuns.length > 0) {
+                      setSelectedMunId(filteredMuns[0].id);
+                      setSelectedDistId('');
+                      const matchedSects = SECTORS.filter(s => s.municipalityId === filteredMuns[0].id);
+                      if (matchedSects.length > 0) {
+                        setSelectedSectorId(matchedSects[0].id);
+                        setSelectedSectorName(matchedSects[0].name);
+                        setSectorSearch(matchedSects[0].name);
+                      }
+                    }
+                  }}
                   className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
                 >
-                  <option value="Santo Domingo">Santo Domingo</option>
-                  <option value="Santiago">Santiago</option>
-                  <option value="La Romana">La Romana</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Municipio *</label>
-                <select 
-                  value={municipality}
-                  onChange={(e) => setMunicipality(e.target.value)}
-                  className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-                >
-                  <option value="Distrito Nacional">Distrito Nacional</option>
-                  <option value="Santo Domingo Este">Santo Domingo Este</option>
-                  <option value="Santo Domingo Oeste">Santo Domingo Oeste</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Sector *</label>
-                <select 
-                  value={sector}
-                  onChange={(e) => setSector(e.target.value)}
-                  className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-                >
-                  <option value="Naco">Naco</option>
-                  <option value="Bella Vista">Bella Vista</option>
-                  <option value="Piantini">Piantini</option>
-                  <option value="Zona Colonial">Zona Colonial</option>
-                  <option value="Evaristo Morales">Evaristo Morales</option>
+                  {PROVINCES.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
                 </select>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Dirección completa de entrega *</label>
-                <div className="relative">
-                  <MapPin size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input 
-                    type="text" 
-                    required
-                    placeholder="Calle Duarte #15, Apto 2B, Torre Bella"
-                    value={deliveryAddress}
-                    onChange={(e) => setDeliveryAddress(e.target.value)}
-                    className="w-full pl-11 pr-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-                  />
-                </div>
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Municipio o ciudad *</label>
+                <select
+                  value={selectedMunId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setSelectedMunId(id);
+                    setSelectedDistId('');
+                    const matchedSects = SECTORS.filter(s => s.municipalityId === id);
+                    if (matchedSects.length > 0) {
+                      setSelectedSectorId(matchedSects[0].id);
+                      setSelectedSectorName(matchedSects[0].name);
+                      setSectorSearch(matchedSects[0].name);
+                    }
+                  }}
+                  className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
+                >
+                  {availableMunicipalities.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Punto de referencia</label>
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Distrito municipal (Opcional)</label>
+                <select
+                  value={selectedDistId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setSelectedDistId(id);
+                    const matchedSects = SECTORS.filter(s => s.municipalityId === selectedMunId && (!id || s.municipalDistrictId === id));
+                    if (matchedSects.length > 0) {
+                      setSelectedSectorId(matchedSects[0].id);
+                      setSelectedSectorName(matchedSects[0].name);
+                      setSectorSearch(matchedSects[0].name);
+                    }
+                  }}
+                  className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
+                >
+                  <option value="">Ninguno</option>
+                  {availableDistricts.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* COMBOBOX DE SECTOR */}
+            <div className="space-y-1 relative">
+              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Sector o barrio *</label>
+              <div className="relative">
                 <input 
                   type="text" 
-                  placeholder="Ej: Detrás del Supermercado Bravo"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
+                  placeholder="Escribe para buscar sector o barrio..."
+                  value={sectorSearch}
+                  onFocus={() => setIsSectorDropdownOpen(true)}
+                  onChange={(e) => {
+                    setSectorSearch(e.target.value);
+                    setIsCustomSector(true);
+                    setSelectedSectorId('custom');
+                    setSelectedSectorName(e.target.value);
+                  }}
+                  className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsSectorDropdownOpen(!isSectorDropdownOpen)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold"
+                >
+                  ▼
+                </button>
+              </div>
+
+              {isSectorDropdownOpen && (
+                <div className="absolute left-0 right-0 top-[65px] bg-white border border-[#E7E7EC] rounded-xl shadow-xl z-50 max-h-52 overflow-y-auto py-1 text-xs">
+                  {filteredSectors.map(s => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedSectorId(s.id);
+                        setSelectedSectorName(s.name);
+                        setSectorSearch(s.name);
+                        setIsCustomSector(false);
+                        setIsSectorDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2 hover:bg-slate-50 font-semibold text-slate-700"
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                  {sectorSearch.trim() && !filteredSectors.some(s => s.name.toLowerCase() === sectorSearch.toLowerCase()) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomSector(true);
+                        setSelectedSectorId('custom');
+                        setSelectedSectorName(sectorSearch);
+                        setIsSectorDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2 hover:bg-red-50 font-bold text-[#d3121a] border-t border-slate-100"
+                    >
+                      + Agregar "{sectorSearch}" como sector personalizado
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1 md:col-span-2">
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Calle o avenida *</label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="Ej. Avenida Winston Churchill"
+                  value={street}
+                  onChange={(e) => setStreet(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Número</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. #45 o Apto 2B"
+                  value={streetNumber}
+                  onChange={(e) => setStreetNumber(e.target.value)}
                   className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
                 />
               </div>
             </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Punto de referencia</label>
+              <input 
+                type="text" 
+                placeholder="Ej. Frente a la Torre Blue Mall"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Dirección completa</label>
+              <input 
+                type="text" 
+                readOnly
+                value={formattedAddress}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-[#E7E7EC] rounded-xl text-xs font-bold text-slate-500 focus:outline-none cursor-not-allowed"
+              />
+            </div>
+
+            {/* BUSCAR EN EL MAPA BUTTON */}
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={handleSearchAddressOnMap}
+                disabled={isSearchingAddress}
+                className="bg-slate-100 hover:bg-slate-200 border border-[#E7E7EC] text-slate-700 font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all flex items-center gap-2"
+              >
+                <Search size={14} />
+                {isSearchingAddress ? "Buscando..." : "Buscar dirección en el mapa"}
+              </button>
+            </div>
+
+            {/* MAP COMPONENT */}
+            {latitude && longitude && (
+              <div className="space-y-2 pt-2">
+                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Localización Geográfica</span>
+                <div className="w-full h-[250px] rounded-xl overflow-hidden relative">
+                  <DeliveryLocationMap 
+                    latitude={latitude} 
+                    longitude={longitude} 
+                    onMarkerDragEnd={handleMarkerDragEnd} 
+                  />
+                </div>
+                <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-[10px] text-slate-500 font-semibold">
+                  <span>GPS: {latitude.toFixed(5)}, {longitude.toFixed(5)}</span>
+                  <button type="button" onClick={handleResetLocation} className="text-[#d3121a] hover:underline">
+                    Remover marcador GPS
+                  </button>
+                </div>
+              </div>
+            )}
 
           </div>
 
@@ -836,12 +1197,12 @@ export default function CreateOrder() {
 
               <div className="flex justify-between">
                 <span>Dirección de Entrega:</span>
-                <span className="text-slate-900 truncate max-w-[140px]" title={deliveryAddress}>{deliveryAddress || "Sin registrar"}</span>
+                <span className="text-slate-900 truncate max-w-[140px]" title={formattedAddress}>{formattedAddress || "Sin registrar"}</span>
               </div>
 
               <div className="flex justify-between">
                 <span>Sector:</span>
-                <span className="text-slate-900 font-semibold">{sector}</span>
+                <span className="text-slate-900 font-semibold">{selectedSectorName}</span>
               </div>
 
               <div className="flex justify-between">

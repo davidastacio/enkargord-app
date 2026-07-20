@@ -53,88 +53,110 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'URL no proporcionada' }, { status: 400 });
     }
 
-    // Try directly parsing coordinates if raw coords were supplied instead of a URL
+    let latitude: number | null = null;
+    let longitude: number | null = null;
+    let source = 'google_maps';
+
+    // Try directly parsing raw coordinates (e.g. 18.4861, -69.9312)
     const rawCoordsMatch = url.match(/^\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*$/);
     if (rawCoordsMatch) {
-      const lat = parseFloat(rawCoordsMatch[1]);
-      const lng = parseFloat(rawCoordsMatch[2]);
-      if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-        return NextResponse.json({
-          success: true,
-          latitude: lat,
-          longitude: lng,
-          formattedAddress: `Coordenadas manuales: ${lat.toFixed(5)}, ${lng.toFixed(5)}`,
-          source: 'coordinates'
+      latitude = parseFloat(rawCoordsMatch[1]);
+      longitude = parseFloat(rawCoordsMatch[2]);
+      source = 'coordinates';
+    } else {
+      if (!isDomainAllowed(url)) {
+        return NextResponse.json({ 
+          success: false, 
+          error: 'No pudimos reconocer este enlace de ubicación. Dominio no autorizado o no compatible.' 
+        }, { status: 400 });
+      }
+
+      let finalUrl = url;
+
+      // Follow redirect if it's a short URL
+      if (url.includes('maps.app.goo.gl') || url.includes('goo.gl/maps') || url.includes('goo.gl')) {
+        const response = await fetch(url, {
+          method: 'HEAD',
+          redirect: 'manual',
+          signal: AbortSignal.timeout(6000)
         });
-      }
-    }
 
-    if (!isDomainAllowed(url)) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'No pudimos reconocer este enlace de ubicación. Dominio no autorizado o no compatible.' 
-      }, { status: 400 });
-    }
-
-    let finalUrl = url;
-
-    // Follow redirect if it's a short URL
-    if (url.includes('maps.app.goo.gl') || url.includes('goo.gl/maps') || url.includes('goo.gl')) {
-      const response = await fetch(url, {
-        method: 'HEAD',
-        redirect: 'manual',
-        signal: AbortSignal.timeout(6000) // 6 seconds timeout
-      });
-
-      const locationHeader = response.headers.get('location');
-      if (locationHeader) {
-        if (!isDomainAllowed(locationHeader)) {
-          return NextResponse.json({ 
-            success: false, 
-            error: 'Redirección no autorizada a un dominio desconocido.' 
-          }, { status: 400 });
+        const locationHeader = response.headers.get('location');
+        if (locationHeader) {
+          if (!isDomainAllowed(locationHeader)) {
+            return NextResponse.json({ 
+              success: false, 
+              error: 'Redirección no autorizada a un dominio desconocido.' 
+            }, { status: 400 });
+          }
+          finalUrl = locationHeader;
         }
-        finalUrl = locationHeader;
       }
+
+      const coords = extractCoords(finalUrl);
+      if (!coords) {
+        return NextResponse.json({ 
+          success: false, 
+          error: 'El enlace no contiene coordenadas válidas.' 
+        }, { status: 400 });
+      }
+
+      latitude = coords.latitude;
+      longitude = coords.longitude;
+      source = url.includes('whatsapp') ? 'whatsapp' : 'google_maps';
     }
 
-    const coords = extractCoords(finalUrl);
-
-    if (!coords) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'El enlace no contiene coordenadas válidas.' 
-      }, { status: 400 });
-    }
-
-    const { latitude, longitude } = coords;
-
-    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    if (!latitude || !longitude || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
       return NextResponse.json({ success: false, error: 'Coordenadas fuera de rango válido.' }, { status: 400 });
     }
 
-    // Attempt mock reverse geocoding for SD sectors to display a friendly address label
-    let sectorName = "Santo Domingo";
-    if (latitude > 18.48 && latitude < 18.49 && longitude > -69.94 && longitude < -69.93) {
-      sectorName = "Naco, Santo Domingo";
-    } else if (latitude > 18.45 && latitude < 18.47 && longitude > -69.95 && longitude < -69.94) {
-      sectorName = "Bella Vista, Santo Domingo";
-    } else if (latitude > 18.46 && latitude < 18.48 && longitude > -69.90 && longitude < -69.88) {
-      sectorName = "Zona Colonial, Santo Domingo";
+    // Call OpenStreetMap Nominatim reverse geocoder for DR location resolution
+    let formattedAddress = `Coordenadas: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+    let details: any = {};
+
+    try {
+      const geoRes = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
+        {
+          headers: {
+            'User-Agent': 'EnkargoRD-Logistics-Platform'
+          },
+          signal: AbortSignal.timeout(4000)
+        }
+      );
+
+      if (geoRes.ok) {
+        const geoData = await geoRes.json();
+        formattedAddress = geoData.display_name || formattedAddress;
+        
+        const addr = geoData.address || {};
+        details = {
+          road: addr.road || addr.street || addr.avenue || '',
+          suburb: addr.suburb || addr.neighbourhood || addr.quarter || '',
+          city: addr.city || addr.town || addr.village || addr.municipality || '',
+          county: addr.county || '',
+          state: addr.state || '',
+          postcode: addr.postcode || '',
+          houseNumber: addr.house_number || ''
+        };
+      }
+    } catch {
+      // Fail-safe to empty details if geocoder times out or fails
     }
 
     return NextResponse.json({
       success: true,
       latitude,
       longitude,
-      formattedAddress: `Cerca de ${sectorName} (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`,
-      source: url.includes('whatsapp') ? 'whatsapp' : 'google_maps'
+      formattedAddress,
+      source,
+      details
     });
 
   } catch (error: any) {
     return NextResponse.json({ 
       success: false, 
-      error: 'No pudimos abrir el enlace corto. Intenta pegar el enlace completo de Google Maps.' 
+      error: 'No pudimos procesar la geocodificación de esta ubicación.' 
     }, { status: 500 });
   }
 }
