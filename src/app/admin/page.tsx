@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { 
   Package, 
   Truck, 
@@ -211,6 +212,20 @@ export default function AdminDashboard() {
     } else {
       setCouriers(DEFAULT_COURIERS);
       localStorage.setItem('enkargord_couriers', JSON.stringify(DEFAULT_COURIERS));
+    }
+
+    // Read active tab from query parameters
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (tabParam === 'fleet') {
+      setActiveTab('fleet');
+      setActiveSidebarMenu('fleet');
+    } else if (tabParam === 'settlement') {
+      setActiveTab('settlement');
+      setActiveSidebarMenu('settlement');
+    } else {
+      setActiveTab('dispatch');
+      setActiveSidebarMenu('dashboard');
     }
   }, []);
 
@@ -546,6 +561,14 @@ export default function AdminDashboard() {
               <Truck size={18} />
               Flota Motoristas
             </button>
+
+            <Link
+              href="/admin/usuarios"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            >
+              <Users size={18} />
+              Usuarios Registrados
+            </Link>
 
             <button
               onClick={() => { setActiveSidebarMenu('settlement'); setActiveTab('settlement'); }}
