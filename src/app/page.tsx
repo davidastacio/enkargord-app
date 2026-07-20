@@ -61,13 +61,13 @@ export default function LandingPage() {
           {/* Auth Action Buttons right */}
           <div className="flex items-center gap-3">
             <Link 
-              href="/admin" 
+              href="/login" 
               className="border border-[#d3121a] text-[#d3121a] hover:bg-[#d3121a]/5 font-bold text-xs py-2.5 px-5 rounded-xl transition-all"
             >
               Iniciar sesión
             </Link>
             <Link 
-              href="/admin" 
+              href="/registro" 
               className="bg-[#d3121a] hover:bg-[#b00f14] text-white font-bold text-xs py-2.5 px-5 rounded-xl shadow-md shadow-red-100 transition-all"
             >
               Regístrate
@@ -98,7 +98,7 @@ export default function LandingPage() {
 
           <div className="flex flex-wrap gap-4 pt-2">
             <Link 
-              href="/admin" 
+              href="/login" 
               className="bg-[#d3121a] hover:bg-[#b00f14] text-white font-bold text-sm py-4 px-8 rounded-xl shadow-lg shadow-red-200 transition-all flex items-center gap-2"
             >
               Crear envío
