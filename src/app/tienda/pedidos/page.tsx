@@ -3,25 +3,21 @@
 import { useState, useEffect } from 'react';
 import { 
   Search, 
-  Filter, 
-  Calendar, 
-  ChevronRight, 
-  MoreVertical, 
   Trash2, 
-  Copy, 
-  Eye,
-  RefreshCw
+  Copy
 } from 'lucide-react';
 import Link from 'next/link';
 
 interface OrderRow {
   trackingId: string;
   customerName: string;
+  customerPhone: string;
   address: string;
+  packageType: string;
   status: 'in_transit' | 'delivered' | 'pending';
   amount: number;
   courierName: string;
-  time: string;
+  date: string;
 }
 
 export default function StoreOrdersList() {
@@ -37,11 +33,13 @@ export default function StoreOrdersList() {
       const mapped = parsed.map((o: any) => ({
         trackingId: o.trackingId,
         customerName: o.customer.name,
+        customerPhone: o.customer.phone || 'N/A',
         address: o.deliveryAddress.addressLine,
+        packageType: o.packageInfo?.type || 'Paquete pequeño',
         status: o.status === 'in_transit' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
         amount: o.financials.totalCollected,
         courierName: o.courierName,
-        time: o.time
+        date: o.createdAt ? o.createdAt.split('T')[0] : '2026-07-20'
       }));
       setOrders(mapped);
     }
@@ -55,7 +53,7 @@ export default function StoreOrdersList() {
         const filtered = parsed.filter((o: any) => o.trackingId !== id);
         localStorage.setItem('enkargord_orders', JSON.stringify(filtered));
         setOrders(orders.filter(o => o.trackingId !== id));
-        alert(`Orden #${id} cancelada y eliminada.`);
+        alert(`Orden #${id} cancelada.`);
       }
     }
   };
@@ -83,7 +81,7 @@ export default function StoreOrdersList() {
       <div>
         <h2 className="text-xl font-extrabold text-slate-950 tracking-tight">Mis Pedidos</h2>
         <p className="text-xs text-slate-400 mt-1 font-medium">
-          Consulta, filtra e inspecciona el histórico de envíos coordinados por tu negocio.
+          Consulta y gestiona las guías logísticas registradas.
         </p>
       </div>
 
@@ -126,19 +124,21 @@ export default function StoreOrdersList() {
               <tr className="bg-slate-50 border-b border-[#E7E7EC] text-[10px] font-extrabold text-[#64748b] tracking-wider uppercase">
                 <th className="py-4 px-6">Tracking</th>
                 <th className="py-4 px-6">Cliente</th>
+                <th className="py-4 px-6">Teléfono</th>
                 <th className="py-4 px-6">Dirección</th>
+                <th className="py-4 px-6">Tipo de paquete</th>
+                <th className="py-4 px-6">Recaudo</th>
                 <th className="py-4 px-6">Estado</th>
-                <th className="py-4 px-6">Recaudo COD</th>
                 <th className="py-4 px-6">Repartidor</th>
-                <th className="py-4 px-6">Hora</th>
-                <th className="py-4 px-6 text-right">Acciones</th>
+                <th className="py-4 px-6">Fecha</th>
+                <th className="py-4 px-6 text-right">Acción</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E7E7EC] text-xs">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400 font-semibold">
-                    No se encontraron pedidos coincidentes con los filtros.
+                  <td colSpan={10} className="py-12 text-center text-slate-400 font-semibold">
+                    No se encontraron guías coincidentes.
                   </td>
                 </tr>
               ) : (
@@ -146,7 +146,10 @@ export default function StoreOrdersList() {
                   <tr key={o.trackingId} className="hover:bg-slate-50/50 transition-colors">
                     <td className="py-4 px-6 font-bold text-slate-900">#{o.trackingId}</td>
                     <td className="py-4 px-6 font-semibold text-slate-700">{o.customerName}</td>
+                    <td className="py-4 px-6 text-slate-600 font-medium">{o.customerPhone}</td>
                     <td className="py-4 px-6 text-slate-500 max-w-[200px] truncate">{o.address}</td>
+                    <td className="py-4 px-6 font-semibold text-[#d3121a]">{o.packageType}</td>
+                    <td className="py-4 px-6 font-extrabold text-slate-900">RD${o.amount.toLocaleString()}</td>
                     
                     <td className="py-4 px-6">
                       <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide ${
@@ -160,9 +163,8 @@ export default function StoreOrdersList() {
                       </span>
                     </td>
 
-                    <td className="py-4 px-6 font-bold text-slate-900">RD${o.amount.toLocaleString()}</td>
                     <td className="py-4 px-6 font-semibold text-slate-700">{o.courierName}</td>
-                    <td className="py-4 px-6 text-slate-500 font-medium">{o.time}</td>
+                    <td className="py-4 px-6 text-slate-500 font-medium">{o.date}</td>
                     
                     <td className="py-4 px-6 text-right space-x-1.5">
                       <button 
