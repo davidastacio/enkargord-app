@@ -7,7 +7,6 @@ import {
   Phone, 
   Mail, 
   DollarSign, 
-  FileText,
   Clock,
   ArrowLeft,
   ShieldAlert,
@@ -17,7 +16,7 @@ import {
   X,
   Search,
   MapPin,
-  Map
+  HelpCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import DeliveryLocationMap from '@/components/DeliveryLocationMap';
@@ -46,11 +45,11 @@ export default function CreateOrder() {
   // SECTION 2 — DATOS DE ENTREGA ENCADENADOS
   const [country] = useState('República Dominicana');
   
-  const [selectedProvId, setSelectedProvId] = useState('PROV_01'); // Distrito Nacional por defecto
+  const [selectedProvId, setSelectedProvId] = useState('PROV_DN'); // Distrito Nacional por defecto
   const [selectedMunId, setSelectedMunId] = useState('MUN_DN_01');
   const [selectedDistId, setSelectedDistId] = useState('');
   
-  const [sectorSearch, setSectorSearch] = useState('');
+  const [sectorSearch, setSectorSearch] = useState('Naco');
   const [selectedSectorId, setSelectedSectorId] = useState('SEC_DN_01'); // Naco por defecto
   const [selectedSectorName, setSelectedSectorName] = useState('Naco');
   const [isCustomSector, setIsCustomSector] = useState(false);
@@ -61,10 +60,10 @@ export default function CreateOrder() {
   const [reference, setReference] = useState('');
   const [formattedAddress, setFormattedAddress] = useState('');
 
-  // Ubicación compartida y Coordenadas GPS
+  // Ubicación compartida y Coordenadas GPS (Santo Domingo por defecto)
   const [sharedLocationUrl, setSharedLocationUrl] = useState('');
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
+  const [latitude, setLatitude] = useState<number>(18.4861);
+  const [longitude, setLongitude] = useState<number>(-69.9312);
   const [locationSource, setLocationSource] = useState<'manual_address' | 'whatsapp' | 'google_maps' | 'coordinates' | 'manual_map'>('manual_address');
   const [locationVerified, setLocationVerified] = useState(false);
 
@@ -183,8 +182,9 @@ export default function CreateOrder() {
       setLocationVerified(true);
       triggerToast("Ubicación cargada correctamente.");
     } catch (err: any) {
-      setLocationStatus('error');
-      setLocationError(err.message || "No pudimos reconocer este enlace de ubicación.");
+      // Non-blocking warning instead of error blocking
+      setLocationStatus('warning');
+      setLocationError(err.message || "No pudimos identificar automáticamente el sector. Selecciónalo o escríbelo manualmente.");
     } finally {
       setIsResolvingLocation(false);
     }
@@ -226,7 +226,6 @@ export default function CreateOrder() {
         setSectorSearch(sectorObj.name);
         setIsCustomSector(false);
       } else {
-        // Fallback: Custom sector option
         setSectorSearch(matchedSector);
         setIsCustomSector(true);
         setSelectedSectorId('custom');
@@ -246,7 +245,7 @@ export default function CreateOrder() {
 
     if (warningFound) {
       setLocationStatus('warning');
-      setLocationError("No pudimos identificar con precisión el sector. Selecciónalo manualmente.");
+      setLocationError("Ubicación encontrada, pero debes completar el sector manualmente.");
     } else {
       setLocationStatus('success');
     }
@@ -290,7 +289,7 @@ export default function CreateOrder() {
       setLocationStatus('success');
       triggerToast("Dirección encontrada y fijada en el mapa.");
     } catch (err: any) {
-      setLocationStatus('error');
+      setLocationStatus('warning');
       alert(err.message || "No pudimos ubicar la dirección exacta. Ubícala arrastrando el pin.");
     } finally {
       setIsSearchingAddress(false);
@@ -299,7 +298,6 @@ export default function CreateOrder() {
 
   // Draggable Marker callbacks
   const handleMarkerDragEnd = async (newLat: number, newLng: number) => {
-    // Attempt reverse geocoding on drag
     try {
       const res = await fetch('/api/location/resolve', {
         method: 'POST',
@@ -312,7 +310,6 @@ export default function CreateOrder() {
         setPendingDragCoords({ lat: newLat, lng: newLng });
         setDragAddressDetails(data.details);
       } else {
-        // Fallback manual set coords directly
         setLatitude(newLat);
         setLongitude(newLng);
         setLocationSource('manual_map');
@@ -348,14 +345,19 @@ export default function CreateOrder() {
   };
 
   const handleResetLocation = () => {
-    setLatitude(null);
-    setLongitude(null);
+    setLatitude(18.4861);
+    setLongitude(-69.9312);
     setLocationVerified(false);
     setSharedLocationUrl('');
     setLocationSource('manual_address');
     setFormattedAddress('');
     setLocationError(null);
     setLocationStatus('idle');
+  };
+
+  const handleConfirmLocation = () => {
+    setLocationVerified(true);
+    triggerToast("✓ Ubicación GPS confirmada");
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -367,6 +369,11 @@ export default function CreateOrder() {
 
     if (!custName.trim() || !custPhone.trim() || !pickupDate) {
       alert("Por favor rellene los campos obligatorios del envío (Nombre, Teléfono y Fecha de Recogida).");
+      return;
+    }
+
+    if (!provName || !munName || !sectorName.trim()) {
+      alert("Por favor complete los campos obligatorios de Provincia, Municipio y Sector (puede escribirlo manualmente).");
       return;
     }
 
@@ -406,7 +413,6 @@ export default function CreateOrder() {
           phone: custPhone,
           email: custEmail || undefined
         },
-        // Complete territorial parameters mapping
         country,
         provinceId: selectedProvId,
         provinceName: provName,
@@ -414,9 +420,9 @@ export default function CreateOrder() {
         municipalityName: munName,
         municipalDistrictId: selectedDistId || undefined,
         municipalDistrictName: selectedDistId ? MUNICIPAL_DISTRICTS.find(d => d.id === selectedDistId)?.name : undefined,
-        sectorId: selectedSectorId,
+        sectorId: selectedSectorId === 'custom' ? null : selectedSectorId,
         sectorName: sectorName,
-        isCustomSector,
+        sectorIsCustom: isCustomSector,
         street,
         streetNumber,
         reference,
@@ -424,14 +430,11 @@ export default function CreateOrder() {
         deliveryAddress: {
           addressLine: formattedAddress,
           city: `${sectorName} (${provName})`,
-          coordinates: latitude && longitude ? { lat: latitude, lng: longitude } : {
-            lat: 18.4861,
-            lng: -69.9312
-          }
+          coordinates: { lat: latitude, lng: longitude }
         },
         deliveryLocationUrl: sharedLocationUrl || undefined,
-        deliveryLatitude: latitude || undefined,
-        deliveryLongitude: longitude || undefined,
+        deliveryLatitude: latitude,
+        deliveryLongitude: longitude,
         deliveryLocationSource: locationSource,
         deliveryLocationVerified: locationVerified,
         
@@ -614,7 +617,7 @@ export default function CreateOrder() {
                   </label>
                   {locationStatus === 'loading' && <span className="text-[9px] text-[#d3121a] font-bold animate-pulse">📡 Obteniendo ubicación...</span>}
                   {locationStatus === 'success' && <span className="text-[9px] text-emerald-600 font-bold">✓ Dirección encontrada</span>}
-                  {locationStatus === 'warning' && <span className="text-[9px] text-amber-600 font-bold">⚠️ Completa manualmente los datos faltantes</span>}
+                  {locationStatus === 'warning' && <span className="text-[9px] text-amber-600 font-bold">⚠️ {locationError || "Ubicación encontrada, completa los datos faltantes"}</span>}
                 </div>
                 
                 <div className="flex gap-2">
@@ -636,10 +639,10 @@ export default function CreateOrder() {
                 </div>
               </div>
 
-              {locationError && (
-                <div className="p-3 bg-red-50 text-red-600 text-[10px] font-bold rounded-xl border border-red-100 flex items-center justify-between">
+              {locationStatus === 'warning' && locationError && (
+                <div className="p-3 bg-amber-50 text-amber-800 text-[10px] font-bold rounded-xl border border-amber-200 flex items-center justify-between">
                   <span>⚠️ {locationError}</span>
-                  <button type="button" onClick={() => setLocationError(null)} className="text-red-500">
+                  <button type="button" onClick={() => setLocationError(null)} className="text-amber-600">
                     <X size={12} />
                   </button>
                 </div>
@@ -779,7 +782,7 @@ export default function CreateOrder() {
                       {s.name}
                     </button>
                   ))}
-                  {sectorSearch.trim() && !filteredSectors.some(s => s.name.toLowerCase() === sectorSearch.toLowerCase()) && (
+                  {sectorSearch.trim() && (
                     <button
                       type="button"
                       onClick={() => {
@@ -855,25 +858,51 @@ export default function CreateOrder() {
               </button>
             </div>
 
-            {/* MAP COMPONENT */}
-            {latitude && longitude && (
-              <div className="space-y-2 pt-2">
+            {/* MAP COMPONENT VISIBLE ALWAYS */}
+            <div className="space-y-2 pt-2">
+              <div className="flex justify-between items-center">
                 <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Localización Geográfica</span>
-                <div className="w-full h-[250px] rounded-xl overflow-hidden relative">
-                  <DeliveryLocationMap 
-                    latitude={latitude} 
-                    longitude={longitude} 
-                    onMarkerDragEnd={handleMarkerDragEnd} 
-                  />
+                {locationVerified && (
+                  <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-1">
+                    ✓ Ubicación GPS confirmada
+                  </span>
+                )}
+              </div>
+              
+              <div className="w-full h-[280px] rounded-xl overflow-hidden relative">
+                <DeliveryLocationMap 
+                  latitude={latitude} 
+                  longitude={longitude} 
+                  onMarkerDragEnd={handleMarkerDragEnd} 
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3 border border-[#E7E7EC] rounded-xl">
+                <div className="text-[10px] font-semibold text-slate-500">
+                  <div><strong>Latitud:</strong> {latitude.toFixed(6)} | <strong>Longitud:</strong> {longitude.toFixed(6)}</div>
+                  {locationSource !== 'manual_address' && (
+                    <div className="text-[9px] text-slate-400 mt-0.5">Origen: {locationSource}</div>
+                  )}
                 </div>
-                <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-[10px] text-slate-500 font-semibold">
-                  <span>GPS: {latitude.toFixed(5)}, {longitude.toFixed(5)}</span>
-                  <button type="button" onClick={handleResetLocation} className="text-[#d3121a] hover:underline">
-                    Remover marcador GPS
+                
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleResetLocation}
+                    className="bg-white hover:bg-slate-100 border border-[#E7E7EC] text-slate-600 font-bold text-xs px-3 py-1.5 rounded-lg transition-all"
+                  >
+                    Cambiar ubicación
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmLocation}
+                    className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-all"
+                  >
+                    Confirmar ubicación
                   </button>
                 </div>
               </div>
-            )}
+            </div>
 
           </div>
 
