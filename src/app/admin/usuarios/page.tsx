@@ -387,7 +387,7 @@ export default function RegisteredUsers() {
         <div>
           {/* Logo Brand Header */}
           <div className="p-4 border-b border-[#E7E7EC] flex items-center justify-center">
-            <div className="relative w-64 h-20">
+            <div className="relative w-[270px] h-24">
               <Image 
                 src="/logo.png" 
                 alt="EnkargoRD Logo" 

@@ -25,7 +25,7 @@ export default function LandingPage() {
           
           {/* Logo on the left */}
           <Link href="/" className="flex items-center justify-center">
-            <div className="relative w-72 h-24">
+            <div className="relative w-[380px] h-[120px]">
               <Image 
                 src="/logo.png" 
                 alt="EnkargoRD Logo" 
