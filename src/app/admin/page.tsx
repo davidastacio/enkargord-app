@@ -509,17 +509,15 @@ export default function AdminDashboard() {
       <aside className="w-[280px] bg-white border-r border-[#E7E7EC] flex flex-col justify-between fixed top-0 bottom-0 left-0 z-40">
         <div>
           {/* Logo Brand Header */}
-          <div className="p-6 border-b border-[#E7E7EC] flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-[#d3121a] flex items-center justify-center font-bold text-white text-xl shadow-md shadow-red-200">
-              E
-            </div>
-            <div>
-              <span className="font-display font-extrabold text-lg text-slate-900 tracking-tight">
-                Enkargo<span className="text-[#d3121a]">RD</span>
-              </span>
-              <span className="block text-[10px] text-slate-400 font-bold tracking-wider uppercase mt-[-2px]">
-                Transportadora
-              </span>
+          <div className="p-6 border-b border-[#E7E7EC] flex items-center">
+            <div className="relative w-40 h-14">
+              <Image 
+                src="/logo.png" 
+                alt="EnkargoRD Logo" 
+                fill 
+                className="object-contain object-left" 
+                priority
+              />
             </div>
           </div>
 

@@ -24,23 +24,15 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           
           {/* Logo on the left */}
-          <Link href="/" className="flex items-center gap-3">
-            <div className="relative w-10 h-10">
+          <Link href="/" className="flex items-center">
+            <div className="relative w-40 h-14">
               <Image 
                 src="/logo.png" 
                 alt="EnkargoRD Logo" 
                 fill 
-                className="object-contain" 
+                className="object-contain object-left" 
                 priority
               />
-            </div>
-            <div className="hidden sm:block">
-              <span className="font-display font-extrabold text-xl text-slate-900 tracking-tight block">
-                Enkargo<span className="text-[#d3121a]">RD</span>
-              </span>
-              <span className="block text-[9px] text-[#d3121a] font-bold tracking-widest uppercase mt-[-3px]">
-                LLEVAMOS LO QUE IMPORTA
-              </span>
             </div>
           </Link>
 
