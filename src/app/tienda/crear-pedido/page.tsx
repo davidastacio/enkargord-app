@@ -218,8 +218,8 @@ export default function CreateOrder() {
 
     // 3. Match Sector
     if (details.suburb) {
-      const matchedSector = matchTerritoryName(details.suburb, 'sector');
-      const sectorObj = SECTORS.find(s => s.name === matchedSector);
+      const matchedSector = details.suburb;
+      const sectorObj = SECTORS.find(s => s.name.toLowerCase() === matchedSector.toLowerCase());
       if (sectorObj) {
         setSelectedSectorId(sectorObj.id);
         setSelectedSectorName(sectorObj.name);
@@ -227,10 +227,10 @@ export default function CreateOrder() {
         setIsCustomSector(false);
       } else {
         // Fallback: Custom sector option
-        setSectorSearch(details.suburb);
+        setSectorSearch(matchedSector);
         setIsCustomSector(true);
         setSelectedSectorId('custom');
-        setSelectedSectorName(details.suburb);
+        setSelectedSectorName(matchedSector);
       }
     } else {
       warningFound = true;
@@ -365,8 +365,8 @@ export default function CreateOrder() {
     const munName = MUNICIPALITIES.find(m => m.id === selectedMunId)?.name || '';
     const sectorName = isCustomSector ? sectorSearch : (SECTORS.find(s => s.id === selectedSectorId)?.name || '');
 
-    if (!custName.trim() || !custPhone.trim() || !street.trim() || !pickupDate || !sectorName) {
-      alert("Por favor rellene los campos obligatorios del envío.");
+    if (!custName.trim() || !custPhone.trim() || !pickupDate) {
+      alert("Por favor rellene los campos obligatorios del envío (Nombre, Teléfono y Fecha de Recogida).");
       return;
     }
 
@@ -737,7 +737,7 @@ export default function CreateOrder() {
 
             {/* COMBOBOX DE SECTOR */}
             <div className="space-y-1 relative">
-              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Sector o barrio *</label>
+              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Sector o barrio</label>
               <div className="relative">
                 <input 
                   type="text" 
@@ -799,10 +799,9 @@ export default function CreateOrder() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1 md:col-span-2">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Calle o avenida *</label>
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Calle o avenida</label>
                 <input 
                   type="text" 
-                  required
                   placeholder="Ej. Avenida Winston Churchill"
                   value={street}
                   onChange={(e) => setStreet(e.target.value)}
