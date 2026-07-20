@@ -15,9 +15,14 @@ import {
   ShieldAlert,
   Calendar,
   Layers,
-  HelpCircle
+  HelpCircle,
+  Link2,
+  CheckCircle2,
+  Map,
+  X
 } from 'lucide-react';
 import Link from 'next/link';
+import DeliveryLocationMap from '@/components/DeliveryLocationMap';
 
 export default function CreateOrder() {
   const router = useRouter();
@@ -28,12 +33,20 @@ export default function CreateOrder() {
   const [custPhoneAlt, setCustPhoneAlt] = useState('');
   const [custEmail, setCustEmail] = useState('');
 
-  // SECTION 2 — DATOS DE ENTREGA
+  // SECTION 2 — DATOS DE ENTREGA & UBICACIÓN COMPARTIDA
   const [province, setProvince] = useState('Santo Domingo');
   const [municipality, setMunicipality] = useState('Distrito Nacional');
   const [sector, setSector] = useState('Naco');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [reference, setReference] = useState('');
+
+  // Coordenadas e información de mapas
+  const [sharedLocationUrl, setSharedLocationUrl] = useState('');
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [locationSource, setLocationSource] = useState<'manual_address' | 'whatsapp' | 'google_maps' | 'coordinates' | 'manual_map'>('manual_address');
+  const [locationVerified, setLocationVerified] = useState(false);
+  const [formattedAddress, setFormattedAddress] = useState('');
 
   // SECTION 3 — INFORMACIÓN LOGÍSTICA DEL PAQUETE
   const [packageType, setPackageType] = useState('Paquete pequeño');
@@ -63,11 +76,12 @@ export default function CreateOrder() {
   const [receiverPhone, setReceiverPhone] = useState('');
   const [observations, setObservations] = useState('');
 
-  // UI state
+  // UI status
   const [isLoading, setIsLoading] = useState(false);
+  const [isResolvingLocation, setIsResolvingLocation] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Cost estimates
   const shippingFee = 200;
 
   const triggerToast = (message: string) => {
@@ -75,6 +89,69 @@ export default function CreateOrder() {
     setTimeout(() => {
       setToastMessage(null);
     }, 4000);
+  };
+
+  const handleResolveLocation = async () => {
+    if (!sharedLocationUrl.trim()) {
+      setLocationError("Por favor pegue un enlace o coordenadas antes de cargar.");
+      return;
+    }
+
+    setIsResolvingLocation(true);
+    setLocationError(null);
+
+    try {
+      const res = await fetch('/api/location/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: sharedLocationUrl })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "No pudimos reconocer este enlace de ubicación.");
+      }
+
+      setLatitude(data.latitude);
+      setLongitude(data.longitude);
+      setLocationSource(data.source);
+      setFormattedAddress(data.formattedAddress);
+      setLocationVerified(true);
+      
+      // Auto fill reverse-geocoded address suggestions if possible
+      if (data.formattedAddress) {
+        setReference(prev => prev ? prev : `Localizado vía GPS: ${data.formattedAddress}`);
+      }
+
+      triggerToast("Ubicación cargada correctamente.");
+    } catch (err: any) {
+      setLocationError(err.message || "No pudimos reconocer este enlace de ubicación.");
+    } finally {
+      setIsResolvingLocation(false);
+    }
+  };
+
+  const handleMarkerDragEnd = (newLat: number, newLng: number) => {
+    setLatitude(newLat);
+    setLongitude(newLng);
+    setLocationSource('manual_map');
+    setFormattedAddress(`Ajuste manual en mapa: ${newLat.toFixed(5)}, ${newLng.toFixed(5)}`);
+  };
+
+  const handleConfirmLocation = () => {
+    setLocationVerified(true);
+    triggerToast("Ubicación GPS confirmada.");
+  };
+
+  const handleResetLocation = () => {
+    setLatitude(null);
+    setLongitude(null);
+    setLocationVerified(false);
+    setSharedLocationUrl('');
+    setLocationSource('manual_address');
+    setFormattedAddress('');
+    setLocationError(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -124,11 +201,19 @@ export default function CreateOrder() {
         deliveryAddress: {
           addressLine: deliveryAddress,
           city: `${sector} (${province})`,
-          coordinates: {
+          coordinates: latitude && longitude ? { lat: latitude, lng: longitude } : {
             lat: 18.4861 + (Math.random() - 0.5) * 0.03,
             lng: -69.9312 + (Math.random() - 0.5) * 0.03
           }
         },
+        // Logística y campos de geolocalización de privacidad solicitados
+        deliveryLocationUrl: sharedLocationUrl || undefined,
+        deliveryLatitude: latitude || undefined,
+        deliveryLongitude: longitude || undefined,
+        deliveryFormattedAddress: formattedAddress || undefined,
+        deliveryLocationSource: locationSource,
+        deliveryLocationVerified: locationVerified,
+        
         packageInfo: {
           type: packageType,
           count: parseInt(packagesCount) || 1,
@@ -271,6 +356,94 @@ export default function CreateOrder() {
               2. Ubicación y Datos de Entrega
             </h3>
             
+            {/* UBICACIÓN COMPARTIDA INTEGRATION */}
+            <div className="p-4 bg-slate-50 border border-[#E7E7EC] rounded-2xl space-y-4">
+              <div className="space-y-1">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
+                    Ubicación compartida (WhatsApp / Google Maps)
+                  </label>
+                  {latitude && longitude && (
+                    <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+                      <CheckCircle2 size={12} /> Ubicación cargada ({locationSource})
+                    </span>
+                  )}
+                </div>
+                
+                <div className="flex gap-2">
+                  <div className="relative flex-grow">
+                    <Link2 size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      type="text" 
+                      placeholder="Pega aquí el enlace de ubicación enviado por WhatsApp o Google Maps"
+                      value={sharedLocationUrl}
+                      onChange={(e) => setSharedLocationUrl(e.target.value)}
+                      className="w-full pl-11 pr-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleResolveLocation}
+                    disabled={isResolvingLocation}
+                    className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all flex items-center gap-2"
+                  >
+                    {isResolvingLocation ? "Cargando..." : "Cargar ubicación"}
+                  </button>
+                </div>
+                
+                <span className="text-[9px] text-slate-400 font-bold block mt-1">
+                  Compatible con enlaces de Google Maps y ubicaciones compartidas por WhatsApp o coordenadas directas (ej: 18.4861, -69.9312).
+                </span>
+              </div>
+
+              {/* Location error log */}
+              {locationError && (
+                <div className="p-3 bg-red-50 text-red-600 text-[10px] font-bold rounded-xl border border-red-100 flex items-center justify-between">
+                  <span>⚠️ {locationError}</span>
+                  <button type="button" onClick={() => setLocationError(null)} className="text-red-500">
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
+
+              {/* Location map visualization */}
+              {latitude && longitude && (
+                <div className="space-y-3 animate-fade-in">
+                  <div className="w-full h-[250px] rounded-xl overflow-hidden relative">
+                    <DeliveryLocationMap 
+                      latitude={latitude} 
+                      longitude={longitude} 
+                      onMarkerDragEnd={handleMarkerDragEnd} 
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 border border-[#E7E7EC] rounded-xl">
+                    <div className="text-[10px] font-semibold text-slate-500 space-y-0.5">
+                      <div><strong>GPS:</strong> {latitude.toFixed(6)}, {longitude.toFixed(6)}</div>
+                      <div className="truncate max-w-[300px]"><strong>Dirección aproximada:</strong> {formattedAddress}</div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleResetLocation}
+                        className="bg-slate-50 hover:bg-slate-100 border border-[#E7E7EC] text-slate-600 font-bold text-xs px-3 py-2 rounded-lg transition-all"
+                      >
+                        Cambiar ubicación
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmLocation}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-2 rounded-lg transition-all"
+                      >
+                        Confirmar ubicación
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Provincia *</label>
