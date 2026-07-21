@@ -2,19 +2,48 @@ import { NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 
 export async function POST(request: Request) {
+  console.log('[API Debug] [activation-request-received] Iniciando activación de perfil operativo.');
+
   try {
-    if (!adminAuth || !adminDb) {
+    // 1. Verify if Firebase Admin credentials are set
+    const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
+    const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
+    const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
+
+    if (!projectId || !clientEmail || !privateKey) {
+      console.error('[API Debug] [SERVER_CONFIGURATION_ERROR] Faltan variables de entorno de Firebase Admin en Vercel.');
       return NextResponse.json(
-        { error: 'Firebase Admin SDK no está inicializado.' },
+        {
+          success: false,
+          error: 'SERVER_CONFIGURATION_ERROR',
+          message: 'Firebase Admin no está configurado correctamente en el servidor.'
+        },
         { status: 500 }
       );
     }
 
-    // 1. Verify Authorization Bearer Header (Session or ID Token)
+    if (!adminAuth || !adminDb) {
+      console.error('[API Debug] [SERVER_INIT_ERROR] Instancia de Firebase Admin no inicializada.');
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'SERVER_INIT_ERROR',
+          message: 'Error al inicializar servicios de base de datos en el servidor.'
+        },
+        { status: 500 }
+      );
+    }
+
+    // 2. Parse Bearer Token
     const authHeader = request.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('[API Debug] [UNAUTHORIZED] Cabecera de autorización ausente o inválida.');
       return NextResponse.json(
-        { error: 'No autenticado. Falta token de sesión.' },
+        {
+          success: false,
+          error: 'UNAUTHORIZED',
+          message: 'No autenticado. Falta token de sesión.'
+        },
         { status: 401 }
       );
     }
@@ -23,23 +52,33 @@ export async function POST(request: Request) {
     let decodedToken;
     try {
       decodedToken = await adminAuth.verifyIdToken(idToken);
-    } catch (authErr) {
-      console.error('[API Auth Error] Token inválido:', authErr);
+      console.log(`[API Debug] [session-verified] Sesión verificada para UID: ${decodedToken.uid}`);
+    } catch (authErr: any) {
+      console.error('[API Debug] [TOKEN_VERIFICATION_FAILED] Error verificando ID token:', authErr.message);
       return NextResponse.json(
-        { error: 'Token de autenticación no válido o expirado.' },
+        {
+          success: false,
+          error: 'TOKEN_VERIFICATION_FAILED',
+          message: 'Sesión inválida o expirada.'
+        },
         { status: 401 }
       );
     }
 
     const uid = decodedToken.uid;
 
-    // 2. Fetch user profile securely from Firestore using Admin SDK
+    // 3. Get user role from users collection
     const userDocRef = adminDb.collection('users').doc(uid);
     const userSnap = await userDocRef.get();
 
     if (!userSnap.exists) {
+      console.error(`[API Debug] [USER_NOT_FOUND] No existe registro en users/${uid}`);
       return NextResponse.json(
-        { error: 'Perfil de usuario no encontrado.' },
+        {
+          success: false,
+          error: 'USER_NOT_FOUND',
+          message: 'Perfil de usuario no encontrado en la base de datos.'
+        },
         { status: 404 }
       );
     }
@@ -47,32 +86,54 @@ export async function POST(request: Request) {
     const userData = userSnap.data();
     const userRole = userData?.role;
 
-    // 3. Confirm user is genuinely an Admin
     const isAdmin = userRole === 'admin' || userRole === 'Admin' || userRole === 'Administrador';
     if (!isAdmin) {
+      console.error(`[API Debug] [FORBIDDEN] El usuario ${uid} tiene rol ${userRole} (No es administrador).`);
       return NextResponse.json(
-        { error: 'Acceso denegado. Solo administradores pueden realizar esta acción.' },
+        {
+          success: false,
+          error: 'FORBIDDEN',
+          message: 'Acceso denegado. Se requiere rol de administrador.'
+        },
         { status: 403 }
       );
     }
 
-    // 4. Check if operative courier profile already exists in `couriers` collection
+    console.log(`[API Debug] [admin-role-verified] Usuario ${uid} verificado como Admin legítimo.`);
+
+    // 4. Check existing profile
     const courierDocRef = adminDb.collection('couriers').doc(uid);
     const courierSnap = await courierDocRef.get();
 
     if (courierSnap.exists) {
       const existingData = courierSnap.data();
+      console.log(`[API Debug] [existing-profile-checked] El perfil operativo couriers/${uid} ya existe.`);
+      
+      // Ensure users document is synced just in case
+      if (!userData?.courierId || !userData?.courierModeEnabled) {
+        await userDocRef.update({
+          courierId: uid,
+          courierModeEnabled: true,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
       return NextResponse.json({
         success: true,
         courierId: uid,
         alreadyExisted: true,
-        data: existingData,
+        courier: {
+          id: uid,
+          userUid: uid,
+          status: existingData?.status || 'available',
+          active: existingData?.active !== undefined ? existingData.active : true,
+        }
       });
     }
 
-    // 5. Create operative profile via Server Admin SDK without altering Auth UID or principal role
+    // 5. Create new operative profile safely
     const nowIso = new Date().toISOString();
-    const adminFullName = userData?.name || userData?.displayName || decodedToken.name || 'Administrador';
+    const adminFullName = userData?.fullName || userData?.name || decodedToken.name || 'Administrador';
     const adminEmail = userData?.email || decodedToken.email || '';
     const adminPhone = userData?.phone || '';
 
@@ -94,15 +155,17 @@ export async function POST(request: Request) {
     };
 
     await courierDocRef.set(newCourierProfile);
+    console.log(`[API Debug] [courier-profile-created] Perfil operativo couriers/${uid} guardado.`);
 
-    // 6. Update `users/{uid}` document to link courierId and enable courierMode
+    // 6. Update user document
     await userDocRef.update({
       courierId: uid,
       courierModeEnabled: true,
       updatedAt: nowIso,
     });
+    console.log(`[API Debug] [user-profile-updated] users/${uid} actualizado con courierId y courierModeEnabled.`);
 
-    // 7. Audit Log
+    // 7. Audit log
     const auditId = `AUD-${Date.now()}`;
     await adminDb.collection('audit_logs').doc(auditId).set({
       id: auditId,
@@ -115,16 +178,32 @@ export async function POST(request: Request) {
       createdAt: nowIso,
     });
 
+    console.log(`[API Debug] [activation-completed] Activación finalizada con éxito.`);
+
     return NextResponse.json({
       success: true,
       courierId: uid,
       alreadyExisted: false,
+      courier: {
+        id: uid,
+        userUid: uid,
+        status: 'available',
+        active: true,
+      }
     });
 
   } catch (error: any) {
-    console.error('[API Activate Courier Profile Error]:', error);
+    console.error('[API Debug] [activation-error]', {
+      name: error instanceof Error ? error.name : 'UnknownError',
+      message: error instanceof Error ? error.message : String(error),
+    });
+
     return NextResponse.json(
-      { error: 'Error interno al activar perfil de repartidor.' },
+      {
+        success: false,
+        error: 'INTERNAL_ERROR',
+        message: 'No se pudo activar el perfil operativo.'
+      },
       { status: 500 }
     );
   }

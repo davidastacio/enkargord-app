@@ -175,17 +175,27 @@ export default function MisEntregasPage() {
         },
       });
 
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const rawText = await res.text();
+        console.error('[Repartidor Debug] activate-profile Non-JSON response:', {
+          status: res.status,
+          preview: rawText.slice(0, 150),
+        });
+        throw new Error('Hubo un error interno al activar el perfil. Inténtalo nuevamente.');
+      }
+
       const data = await res.json();
 
       if (res.ok && data.success) {
         setHasOperativeProfile(true);
         triggerToast("✅ Perfil operativo activado correctamente.");
       } else {
-        alert(`No se pudo activar el perfil operativo: ${data.error || 'Error desconocido'}`);
+        alert(`No se pudo activar el perfil operativo: ${data.message || data.error || 'Error desconocido'}`);
       }
     } catch (err: any) {
       console.error("[Repartidor Debug] Error llamando endpoint de activación:", err);
-      alert(`Ocurrió un error al contactar al servidor: ${err.message || err}`);
+      alert(err.message || 'Ocurrió un error al contactar al servidor.');
     } finally {
       setActivatingProfile(false);
     }

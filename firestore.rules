@@ -56,6 +56,12 @@ service cloud.firestore {
       }
     }
 
+    // Courier Profiles rules
+    match /couriers/{courierId} {
+      allow read: if isAuthenticated() && (request.auth.uid == courierId || resource.data.userUid == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
     // Courier Locations rules
     match /courier_locations/{locationId} {
       allow create: if isCourier() && request.resource.data.courierUid == request.auth.uid;
