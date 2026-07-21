@@ -28,6 +28,7 @@ import MapComponent from '@/components/MapComponent';
 import { collection, query, onSnapshot, doc, setDoc, updateDoc, deleteDoc, addDoc, increment } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import AuthenticatedUserMenu from '@/components/auth/AuthenticatedUserMenu';
 
 // TypeScript Types
 interface Financials {
@@ -802,17 +803,7 @@ export default function AdminDashboard() {
 
           <div className="flex items-center gap-5">
             {/* User Profile widget */}
-            <div className="flex items-center gap-3 text-right">
-              <div>
-                <div className="font-bold text-sm text-slate-800">Gina</div>
-                <div className="text-[10px] text-slate-400 font-bold tracking-wide uppercase">
-                  Administrador Logístico
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-[#d3121a]/10 border-2 border-[#d3121a]/20 flex items-center justify-center font-bold text-[#d3121a] text-sm">
-                G
-              </div>
-            </div>
+            <AuthenticatedUserMenu />
 
             {/* Quick Action Button */}
             <button

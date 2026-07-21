@@ -32,47 +32,31 @@ export default function StoreOrdersList() {
   // Load from Firestore in real-time
   useEffect(() => {
     if (profile?.uid) {
-      const q = query(collection(db, 'orders'), where('storeId', '==', profile.uid));
+      const storeId = profile.storeId || profile.uid;
+      const q = query(collection(db, 'orders'), where('storeId', '==', storeId));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const firestoreOrders = snapshot.docs.map((docSnap) => {
           const o = docSnap.data();
           return {
             trackingId: o.tracking || o.id,
-            customerName: o.customerName,
+            customerName: o.customerName || 'Cliente',
             customerPhone: o.customerPhone || 'N/A',
-            address: o.formattedAddress || o.street,
+            address: o.formattedAddress || o.street || 'Sin dirección',
             packageType: o.packageType || 'Paquete',
             status: o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
             amount: (o.collectionAmount || 0) + (o.shippingCost || 0),
             courierName: o.courierName || 'No asignado',
-            date: o.createdAt ? o.createdAt.split('T')[0] : '2026-07-20'
+            date: o.createdAt ? o.createdAt.split('T')[0] : 'Hoy'
           };
         });
         setOrders(firestoreOrders as OrderRow[]);
       }, (error) => {
         console.error("Error listening to store orders:", error);
+        setOrders([]);
       });
       return () => unsubscribe();
     } else {
-      // Fallback to local storage if no user profile is loaded yet
-      const local = localStorage.getItem('enkargord_orders');
-      if (local) {
-        const parsed = JSON.parse(local);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const mapped = parsed.map((o: any) => ({
-          trackingId: o.tracking || o.id,
-          customerName: o.customerName || o.customer?.name,
-          customerPhone: o.customerPhone || o.customer?.phone || 'N/A',
-          address: o.formattedAddress || o.street || o.deliveryAddress?.addressLine,
-          packageType: o.packageType || o.packageInfo?.type || 'Paquete',
-          status: o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
-          amount: o.collectionAmount !== undefined ? ((o.collectionAmount || 0) + (o.shippingCost || 0)) : (o.financials?.totalCollected || 0),
-          courierName: o.courierName || 'No asignado',
-          date: o.createdAt ? o.createdAt.split('T')[0] : '2026-07-20'
-        }));
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setOrders(mapped);
-      }
+      setOrders([]);
     }
   }, [profile]);
 

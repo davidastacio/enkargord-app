@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from 'react';
-import { Search, User, Phone, Mail, Award } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Search, User, Phone, Mail, Award, Loader2, Package } from 'lucide-react';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 interface ClientItem {
   name: string;
@@ -13,14 +16,61 @@ interface ClientItem {
 }
 
 export default function StoreClients() {
+  const { profile } = useAuth() as any;
   const [searchTerm, setSearchTerm] = useState('');
-  const [clients] = useState<ClientItem[]>([
-    { name: "María Rodríguez", phone: "829-555-5678", email: "maria.r@gmail.com", totalOrders: 12, totalSpent: 6850, lastOrderDate: "2026-07-20" },
-    { name: "Juan Pérez", phone: "809-555-1234", email: "juan.perez@hotmail.com", totalOrders: 9, totalSpent: 5420, lastOrderDate: "2026-07-20" },
-    { name: "Pedro García", phone: "849-555-9012", email: "pedro.g@gmail.com", totalOrders: 7, totalSpent: 4300, lastOrderDate: "2026-07-19" },
-    { name: "Ana Martínez", phone: "809-555-4321", email: "ana.martinez@gmail.com", totalOrders: 6, totalSpent: 3980, lastOrderDate: "2026-07-18" },
-    { name: "Luis Gómez", phone: "829-555-3250", email: "luis.gomez@gmail.com", totalOrders: 5, totalSpent: 3250, lastOrderDate: "2026-07-16" }
-  ]);
+  const [clients, setClients] = useState<ClientItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (profile?.uid) {
+      setLoading(true);
+      const storeId = profile.storeId || profile.uid;
+      const q = query(collection(db, 'orders'), where('storeId', '==', storeId));
+
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const clientMap: Record<string, ClientItem> = {};
+
+        snapshot.docs.forEach((docSnap) => {
+          const o = docSnap.data();
+          const name = o.customerName || 'Cliente';
+          const phone = o.customerPhone || 'N/A';
+          const email = o.customerEmail || 'N/A';
+          const orderDate = o.createdAt ? o.createdAt.split('T')[0] : 'N/A';
+          const amount = (o.collectionAmount || 0) + (o.shippingCost || 0);
+
+          if (!clientMap[name]) {
+            clientMap[name] = {
+              name,
+              phone,
+              email,
+              totalOrders: 0,
+              totalSpent: 0,
+              lastOrderDate: orderDate
+            };
+          }
+
+          clientMap[name].totalOrders += 1;
+          if (o.status === 'delivered') {
+            clientMap[name].totalSpent += amount;
+          }
+          if (orderDate > clientMap[name].lastOrderDate) {
+            clientMap[name].lastOrderDate = orderDate;
+          }
+        });
+
+        const list = Object.values(clientMap).sort((a, b) => b.totalOrders - a.totalOrders);
+        setClients(list);
+        setLoading(false);
+      }, (error) => {
+        console.error("Error loading store clients:", error);
+        setLoading(false);
+      });
+
+      return () => unsubscribe();
+    } else {
+      setLoading(false);
+    }
+  }, [profile]);
 
   const filtered = clients.filter(c =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -34,7 +84,7 @@ export default function StoreClients() {
       <div>
         <h2 className="text-xl font-extrabold text-slate-950 tracking-tight">Clientes</h2>
         <p className="text-xs text-slate-400 mt-1 font-medium">
-          Monitorea los clientes frecuentes de tu tienda y sus volúmenes de consumo acumulados.
+          Monitorea los clientes frecuentes de tu tienda y sus volúmenes de consumo acumulados desde Firestore.
         </p>
       </div>
 
@@ -54,49 +104,64 @@ export default function StoreClients() {
 
       {/* Table grid */}
       <section className="bg-white border border-[#E7E7EC] rounded-2xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 border-b border-[#E7E7EC] text-[10px] font-extrabold text-[#64748b] tracking-wider uppercase">
-                <th className="py-4 px-6">Cliente</th>
-                <th className="py-4 px-6">Teléfono</th>
-                <th className="py-4 px-6">Correo</th>
-                <th className="py-4 px-6">Total Pedidos</th>
-                <th className="py-4 px-6">Monto Comprado</th>
-                <th className="py-4 px-6">Último Pedido</th>
-                <th className="py-4 px-6 text-right">Fidelidad</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#E7E7EC] text-xs">
-              {filtered.map((c) => (
-                <tr key={c.name} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="py-4 px-6 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#fee2e2] text-[#d3121a] font-extrabold text-xs flex items-center justify-center">
-                      {c.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                    </div>
-                    <span className="font-bold text-slate-900">{c.name}</span>
-                  </td>
-                  <td className="py-4 px-6 font-semibold text-slate-700">{c.phone}</td>
-                  <td className="py-4 px-6 text-slate-500 font-medium">{c.email}</td>
-                  <td className="py-4 px-6 font-bold text-slate-900">{c.totalOrders} pedidos</td>
-                  <td className="py-4 px-6 font-extrabold text-emerald-600">RD${c.totalSpent.toLocaleString()}</td>
-                  <td className="py-4 px-6 text-slate-400 font-semibold">{c.lastOrderDate}</td>
-                  <td className="py-4 px-6 text-right">
-                    {c.totalOrders >= 9 ? (
-                      <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-100 rounded-full px-2 py-0.5">
-                        <Award size={10} /> VIP
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wide bg-slate-50 text-slate-500 border border-slate-100 rounded-full px-2 py-0.5">
-                        Frecuente
-                      </span>
-                    )}
-                  </td>
+        {loading ? (
+          <div className="py-20 text-center flex flex-col items-center justify-center gap-2">
+            <Loader2 size={24} className="animate-spin text-[#d3121a]" />
+            <span className="text-xs font-bold text-slate-400">Cargando clientes de la tienda...</span>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-20 text-center flex flex-col items-center justify-center gap-3">
+            <Package size={36} className="text-slate-300" />
+            <p className="font-bold text-slate-600">No hay clientes registrados aún.</p>
+            <p className="text-xs text-slate-400 max-w-xs">
+              Los clientes aparecerán en esta lista a medida que tu tienda cree envíos para ellos.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-[#E7E7EC] text-[10px] font-extrabold text-[#64748b] tracking-wider uppercase">
+                  <th className="py-4 px-6">Cliente</th>
+                  <th className="py-4 px-6">Teléfono</th>
+                  <th className="py-4 px-6">Correo</th>
+                  <th className="py-4 px-6">Total Pedidos</th>
+                  <th className="py-4 px-6">Monto Comprado</th>
+                  <th className="py-4 px-6">Último Pedido</th>
+                  <th className="py-4 px-6 text-right">Fidelidad</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-[#E7E7EC] text-xs">
+                {filtered.map((c) => (
+                  <tr key={c.name} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-4 px-6 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-[#fee2e2] text-[#d3121a] font-extrabold text-xs flex items-center justify-center">
+                        {c.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                      </div>
+                      <span className="font-bold text-slate-900">{c.name}</span>
+                    </td>
+                    <td className="py-4 px-6 font-semibold text-slate-700">{c.phone}</td>
+                    <td className="py-4 px-6 text-slate-500 font-medium">{c.email}</td>
+                    <td className="py-4 px-6 font-bold text-slate-900">{c.totalOrders} pedidos</td>
+                    <td className="py-4 px-6 font-extrabold text-emerald-600">RD${c.totalSpent.toLocaleString()}</td>
+                    <td className="py-4 px-6 text-slate-400 font-semibold">{c.lastOrderDate}</td>
+                    <td className="py-4 px-6 text-right">
+                      {c.totalOrders >= 5 ? (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-100 rounded-full px-2 py-0.5">
+                          <Award size={10} /> VIP
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wide bg-slate-50 text-slate-500 border border-slate-100 rounded-full px-2 py-0.5">
+                          Frecuente
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
     </div>

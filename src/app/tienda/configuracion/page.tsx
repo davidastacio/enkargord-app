@@ -1,19 +1,58 @@
 "use client";
 
-import { useState } from 'react';
-import { Settings, Save, Lock, Bell } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Settings, Save, Lock, Loader2 } from 'lucide-react';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function StoreSettings() {
-  const [storeName, setStoreName] = useState('Moda Express RD');
-  const [rnc, setRnc] = useState('131-12345-6');
-  const [phone, setPhone] = useState('809-555-8888');
-  const [email, setEmail] = useState('contacto@modaexpress.do');
-  const [address, setAddress] = useState('Av. Winston Churchill #12, Naco, Santo Domingo');
+  const { user, profile } = useAuth() as any;
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [storeName, setStoreName] = useState('');
+  const [rnc, setRnc] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [address, setAddress] = useState('');
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
-
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadStoreProfile() {
+      if (profile?.uid) {
+        setLoading(true);
+        try {
+          const storeId = profile.storeId || profile.uid;
+          const ref = doc(db, 'stores', storeId);
+          const snap = await getDoc(ref);
+
+          if (snap.exists()) {
+            const data = snap.data();
+            setStoreName(data.commercialName || data.name || profile.name || '');
+            setRnc(data.rnc || '');
+            setPhone(data.phone || profile.phone || '');
+            setEmail(data.email || profile.email || user?.email || '');
+            setAddress(data.address || '');
+          } else {
+            setStoreName(profile.name || '');
+            setPhone(profile.phone || '');
+            setEmail(profile.email || user?.email || '');
+          }
+        } catch (err) {
+          console.error("Error loading store profile settings:", err);
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        setLoading(false);
+      }
+    }
+    loadStoreProfile();
+  }, [profile, user]);
 
   const triggerToast = (message: string) => {
     setToastMessage(message);
@@ -22,9 +61,29 @@ export default function StoreSettings() {
     }, 4000);
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    triggerToast("Datos comerciales actualizados correctamente.");
+    if (!profile?.uid) return;
+
+    setSaving(true);
+    try {
+      const storeId = profile.storeId || profile.uid;
+      await setDoc(doc(db, 'stores', storeId), {
+        commercialName: storeName,
+        rnc,
+        phone,
+        email,
+        address,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      triggerToast("Datos comerciales guardados en Firestore correctamente.");
+    } catch (err) {
+      console.error("Error saving store profile:", err);
+      triggerToast("Error al guardar los cambios en la base de datos.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleUpdatePassword = (e: React.FormEvent) => {
@@ -33,10 +92,19 @@ export default function StoreSettings() {
       alert("Por favor rellene todos los campos de contraseña.");
       return;
     }
-    triggerToast("Contraseña actualizada con éxito.");
+    triggerToast("Solicitud enviada para actualizar contraseña.");
     setCurrentPassword('');
     setNewPassword('');
   };
+
+  if (loading) {
+    return (
+      <div className="py-20 text-center flex flex-col items-center justify-center gap-3">
+        <Loader2 size={28} className="animate-spin text-[#d3121a]" />
+        <span className="text-xs font-bold text-slate-400">Cargando configuración comercial de la tienda...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fade-in relative">
@@ -53,7 +121,7 @@ export default function StoreSettings() {
       <div>
         <h2 className="text-xl font-extrabold text-slate-950 tracking-tight">Configuración</h2>
         <p className="text-xs text-slate-400 mt-1 font-medium">
-          Administra las credenciales comerciales, RNC y preferencias de alertas de tu negocio.
+          Administra las credenciales comerciales, RNC y datos reales de tu negocio en Firestore.
         </p>
       </div>
 
@@ -73,6 +141,7 @@ export default function StoreSettings() {
                 type="text" 
                 value={storeName}
                 onChange={(e) => setStoreName(e.target.value)}
+                placeholder="Ej. Mi Tienda RD"
                 className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
               />
             </div>
@@ -84,6 +153,7 @@ export default function StoreSettings() {
                   type="text" 
                   value={rnc}
                   onChange={(e) => setRnc(e.target.value)}
+                  placeholder="000-00000-0"
                   className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
                 />
               </div>
@@ -94,6 +164,7 @@ export default function StoreSettings() {
                   type="text" 
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+18095550000"
                   className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
                 />
               </div>
@@ -105,6 +176,7 @@ export default function StoreSettings() {
                 type="email" 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                placeholder="contacto@mitienda.do"
                 className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
               />
             </div>
@@ -115,16 +187,18 @@ export default function StoreSettings() {
                 type="text" 
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
+                placeholder="Calle Central #1, Santo Domingo"
                 className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
               />
             </div>
 
             <button 
               type="submit" 
-              className="bg-[#d3121a] hover:bg-[#b00f14] text-white font-extrabold text-xs py-3 px-5 rounded-xl transition-all shadow-md shadow-red-100 flex items-center gap-2"
+              disabled={saving}
+              className="bg-[#d3121a] hover:bg-[#b00f14] text-white font-extrabold text-xs py-3 px-5 rounded-xl transition-all shadow-md shadow-red-100 flex items-center gap-2 disabled:opacity-50"
             >
-              <Save size={14} />
-              Guardar cambios
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {saving ? 'Guardando...' : 'Guardar cambios'}
             </button>
 
           </form>

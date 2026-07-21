@@ -19,9 +19,12 @@ import {
   HelpCircle
 } from 'lucide-react';
 import RouteGuard from '@/components/auth/RouteGuard';
+import AuthenticatedUserMenu from '@/components/auth/AuthenticatedUserMenu';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function StoreLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { profile } = useAuth() as any;
 
   const menuItems = [
     { name: 'Dashboard Tienda', href: '/tienda', icon: Package },
@@ -117,7 +120,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
         <header className="bg-white border-b border-[#E7E7EC] px-8 py-5 flex items-center justify-between sticky top-0 z-30">
           <div>
             <h1 className="text-xl font-extrabold text-slate-950 tracking-tight">
-              ¡Bienvenido, Moda Express RD!
+              ¡Bienvenido, {profile?.name || 'Tienda'}!
             </h1>
             <p className="text-xs text-slate-400 mt-1 font-medium">
               Este es el panel de operaciones de tu tienda. Gestiona tus pedidos y envíos.
@@ -128,8 +131,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
             {/* Date Widget */}
             <div className="hidden md:flex items-center gap-2 border border-[#E7E7EC] px-3.5 py-2.5 rounded-xl bg-slate-50 text-xs font-bold text-slate-600">
               <Calendar size={14} className="text-[#d3121a]" />
-              <span>22 de Mayo, 2024</span>
-              <ChevronDown size={12} className="text-slate-400" />
+              <span>{new Date().toLocaleDateString('es-DO', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
             </div>
 
             {/* Notification Widget */}
@@ -139,19 +141,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
             </button>
 
             {/* User Profile */}
-            <div className="flex items-center gap-3 text-right border-l border-[#E7E7EC] pl-5">
-              <div>
-                <div className="font-bold text-xs text-slate-800">Moda Express RD</div>
-                <div className="text-[10px] text-slate-400 font-bold tracking-wide uppercase">
-                  Tienda Premium
-                </div>
-              </div>
-              <div className="relative w-9 h-9 rounded-full bg-slate-100 border border-[#E7E7EC] overflow-hidden">
-                <div className="w-full h-full flex items-center justify-center font-bold text-[#d3121a] text-sm bg-[#fee2e2]">
-                  ME
-                </div>
-              </div>
-            </div>
+            <AuthenticatedUserMenu />
 
             {/* Quick Action */}
             <Link
