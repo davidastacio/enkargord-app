@@ -17,11 +17,11 @@ import {
   PhoneOff,
   Phone,
   MapPin,
-  DollarSign,
   ChevronRight,
   Loader2,
   AlertTriangle,
   RefreshCw,
+  PlusCircle,
 } from 'lucide-react';
 import {
   collection,
@@ -32,12 +32,14 @@ import {
   updateDoc,
   addDoc,
   serverTimestamp,
+  getDoc,
+  setDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
 import WhatsAppContactButton from '@/components/WhatsAppContactButton';
+import AuthenticatedUserMenu from '@/components/auth/AuthenticatedUserMenu';
 
-// ─── Status label map (same as courier panel) ─────────────────────────────────
 const STATUS_LABEL: Record<string, string> = {
   pending: 'Pendiente',
   assigned: 'Asignado',
@@ -54,9 +56,7 @@ const STATUS_LABEL: Record<string, string> = {
   settled: 'Liquidado',
 };
 
-// Active/working statuses
 const ACTIVE_STATUSES = ['assigned', 'picked_up', 'in_transit', 'customer_unreachable', 'next_delivery'];
-const RESOLVED_STATUSES = ['delivered', 'customer_unreachable', 'failed_delivery', 'returned'];
 
 export default function MisEntregasPage() {
   const { user: authUser, profile } = useAuth() as any;
@@ -66,24 +66,56 @@ export default function MisEntregasPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Profile status state
+  const [hasOperativeProfile, setHasOperativeProfile] = useState<boolean | null>(null);
+  const [activatingProfile, setActivatingProfile] = useState(false);
+
   // UI state
   const [routeActive, setRouteActive] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // ── Determine the courierId for this admin ──────────────────────────────────
-  // Admins who operate as courier use their UID as courierId
-  const adminCourierId = profile?.courierId || authUser?.uid;
+  // Unified Identifier matching actual user/courier profile
+  const adminUid = authUser?.uid;
+  const adminCourierId = profile?.courierId || adminUid;
 
-  // ── Firestore real-time listener ────────────────────────────────────────────
+  // 1. Verify if courier profile document exists in `/couriers/{adminCourierId}`
   useEffect(() => {
     if (!adminCourierId) return;
+
+    async function checkCourierProfile() {
+      try {
+        console.log(`[Repartidor Debug] Verificando perfil para UID: ${adminUid}, courierId: ${adminCourierId}`);
+        const snap = await getDoc(doc(db, 'couriers', adminCourierId));
+        if (snap.exists()) {
+          console.log(`[Repartidor Debug] Perfil encontrado para ${adminCourierId}`);
+          setHasOperativeProfile(true);
+        } else {
+          console.log(`[Repartidor Debug] Perfil NO encontrado para ${adminCourierId}`);
+          setHasOperativeProfile(false);
+        }
+      } catch (err) {
+        console.error("[Repartidor Debug] Error verificando perfil de mensajero:", err);
+        setHasOperativeProfile(false);
+      }
+    }
+
+    checkCourierProfile();
+  }, [adminCourierId, adminUid]);
+
+  // 2. Firestore real-time listener with clean error/finally separation
+  useEffect(() => {
+    if (!adminCourierId || hasOperativeProfile !== true) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
-    // Query orders assigned to this admin's courierId or uid
+    console.log(`[Repartidor Debug] Conectando listener real-time a orders con courierId: ${adminCourierId}`);
+
     const q = query(
       collection(db, 'orders'),
       where('courierId', '==', adminCourierId),
@@ -93,31 +125,67 @@ export default function MisEntregasPage() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-        // Sort by routeOrder if exists, then by createdAt
-        list.sort((a: any, b: any) => {
-          if (a.routeOrder !== undefined && b.routeOrder !== undefined) return a.routeOrder - b.routeOrder;
-          return 0;
-        });
-        setOrders(list);
-        setError(null);
-        setLoading(false);
+        try {
+          const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+          console.log(`[Repartidor Debug] Consulta exitosa. Pedidos encontrados: ${list.length}`);
+          
+          list.sort((a: any, b: any) => {
+            if (a.routeOrder !== undefined && b.routeOrder !== undefined) return a.routeOrder - b.routeOrder;
+            return 0;
+          });
+          
+          setOrders(list);
+          setError(null);
+        } catch (innerErr: any) {
+          console.error('[Repartidor Debug] Error procesando documentos de consulta:', innerErr);
+          setError('Error procesando datos de pedidos.');
+        } finally {
+          setLoading(false);
+        }
       },
       (err) => {
-        console.error('Error loading admin courier orders:', err);
-        // Only set error on real Firestore query failure
-        setError('No se pudieron cargar los pedidos. Revisa tu conexión.');
+        console.error('[Repartidor Debug] Error real en onSnapshot. Código:', err.code, err.message);
+        setError(`No se pudieron cargar los pedidos. (Error: ${err.code || 'Desconocido'})`);
         setLoading(false);
       }
     );
 
     return () => unsubscribe();
-  }, [adminCourierId]);
+  }, [adminCourierId, hasOperativeProfile]);
 
   // ── Toast helper ────────────────────────────────────────────────────────────
   const triggerToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
+  };
+
+  // ── Activate Operative Profile ──────────────────────────────────────────────
+  const handleActivateProfile = async () => {
+    if (!adminCourierId || !authUser) return;
+    setActivatingProfile(true);
+    try {
+      console.log(`[Repartidor Debug] Creando perfil operativo couriers/${adminCourierId}`);
+      await setDoc(doc(db, 'couriers', adminCourierId), {
+        id: adminCourierId,
+        userUid: adminUid,
+        fullName: profile?.name || authUser.displayName || 'Administrador',
+        phone: profile?.phone || '—',
+        email: authUser.email || '',
+        vehicleType: 'motocicleta',
+        vehiclePlate: 'ADMIN-1',
+        status: 'available',
+        currentOrderCount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      setHasOperativeProfile(true);
+      triggerToast("✅ Perfil de repartidor activado correctamente.");
+    } catch (err: any) {
+      console.error("[Repartidor Debug] Error creando perfil de mensajero:", err);
+      alert(`No se pudo activar el perfil operativo: ${err.message || err}`);
+    } finally {
+      setActivatingProfile(false);
+    }
   };
 
   // ── Mark delivery action (same logic as motorista panel) ────────────────────
@@ -170,18 +238,16 @@ export default function MisEntregasPage() {
   };
 
   // ── Derived data ─────────────────────────────────────────────────────────────
-  const routeOrders = orders; // Already filtered to active statuses
+  const routeOrders = orders;
   const current = routeOrders[currentIdx];
   const total = routeOrders.length;
 
-  // Today's delivered (from all orders, not just active — listen separately if needed)
   const deliveredToday = orders.filter((o) => o.status === 'delivered').length;
   const totalCollected = orders
     .filter((o) => o.status === 'delivered')
     .reduce((s: number, o: any) => s + (o.amountCollected || 0), 0);
   const noAnswerCount = orders.filter((o) => o.status === 'customer_unreachable').length;
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F8F9FB] font-sans text-slate-800 antialiased">
 
@@ -242,21 +308,25 @@ export default function MisEntregasPage() {
               Administrador operando como motorista · UID: {adminCourierId?.slice(0, 12)}…
             </p>
           </div>
-          <button
-            onClick={() => setRouteActive(!routeActive)}
-            className={`flex items-center gap-2 font-bold text-xs py-3 px-5 rounded-xl shadow-md transition-all ${
-              routeActive
-                ? 'bg-amber-500 text-white shadow-amber-100 hover:bg-amber-600'
-                : 'bg-[#d3121a] text-white shadow-red-100 hover:bg-[#b00f14]'
-            }`}
-          >
-            {routeActive ? <><Pause size={15} /> Pausar ruta</> : <><Play size={15} /> Iniciar ruta</>}
-          </button>
+          <div className="flex items-center gap-4">
+            <AuthenticatedUserMenu />
+            <button
+              onClick={() => setRouteActive(!routeActive)}
+              disabled={hasOperativeProfile !== true}
+              className={`flex items-center gap-2 font-bold text-xs py-3 px-5 rounded-xl shadow-md transition-all disabled:opacity-55 ${
+                routeActive
+                  ? 'bg-amber-500 text-white shadow-amber-100 hover:bg-amber-600'
+                  : 'bg-[#d3121a] text-white shadow-red-100 hover:bg-[#b00f14]'
+              }`}
+            >
+              {routeActive ? <><Pause size={15} /> Pausar ruta</> : <><Play size={15} /> Iniciar ruta</>}
+            </button>
+          </div>
         </header>
 
         <div className="p-8 space-y-6 max-w-4xl">
 
-          {/* Loading state */}
+          {/* 1. Loading State */}
           {loading && (
             <div className="bg-white border border-[#E7E7EC] rounded-2xl p-12 text-center shadow-sm">
               <Loader2 size={32} className="text-[#d3121a] animate-spin mx-auto mb-3" />
@@ -264,7 +334,7 @@ export default function MisEntregasPage() {
             </div>
           )}
 
-          {/* Error state */}
+          {/* 2. Error State */}
           {!loading && error && (
             <div className="bg-white border border-red-200 rounded-2xl p-12 text-center shadow-sm space-y-4">
               <AlertTriangle size={32} className="text-amber-400 mx-auto" />
@@ -275,19 +345,40 @@ export default function MisEntregasPage() {
             </div>
           )}
 
-          {/* No orders state */}
-          {!loading && !error && total === 0 && (
+          {/* 3. Operative Profile Not Created State */}
+          {!loading && !error && hasOperativeProfile === false && (
+            <div className="bg-white border border-[#E7E7EC] rounded-2xl p-12 text-center shadow-sm space-y-5">
+              <AlertTriangle size={48} className="text-amber-500 mx-auto animate-pulse" />
+              <div className="space-y-1">
+                <h3 className="text-lg font-extrabold text-slate-700">Debes activar tu perfil operativo antes de recibir pedidos.</h3>
+                <p className="text-xs text-slate-400 max-w-xs mx-auto">
+                  Para poder recibir asignaciones en el modo repartidor, se requiere crear tu registro correspondiente de mensajero.
+                </p>
+              </div>
+              <button
+                onClick={handleActivateProfile}
+                disabled={activatingProfile}
+                className="inline-flex items-center gap-2 bg-[#d3121a] hover:bg-[#b00f14] text-white text-xs font-extrabold px-6 py-3.5 rounded-xl shadow-md shadow-red-100 transition-all disabled:opacity-50"
+              >
+                {activatingProfile ? <Loader2 size={15} className="animate-spin" /> : <PlusCircle size={15} />}
+                Activar perfil de repartidor
+              </button>
+            </div>
+          )}
+
+          {/* 4. No Orders State */}
+          {!loading && !error && hasOperativeProfile === true && total === 0 && (
             <div className="bg-white border border-[#E7E7EC] rounded-2xl p-12 text-center shadow-sm space-y-4">
               <CheckCircle size={48} className="text-slate-300 mx-auto" />
-              <h3 className="text-lg font-extrabold text-slate-700">No tienes pedidos asignados en modo repartidor.</h3>
+              <h3 className="text-lg font-extrabold text-slate-700 font-bold">No tienes pedidos asignados en modo repartidor.</h3>
               <p className="text-xs text-slate-400 max-w-xs mx-auto">
                 Cuando se te asigne un pedido aparecerá aquí. (UID repartidor: {adminCourierId?.slice(0, 12)}…)
               </p>
             </div>
           )}
 
-          {/* Active content */}
-          {!loading && !error && total > 0 && (
+          {/* 5. Orders Available / Active Content */}
+          {!loading && !error && hasOperativeProfile === true && total > 0 && (
             <>
               {/* KPIs */}
               <div className="grid grid-cols-4 gap-4">
