@@ -100,10 +100,12 @@ export default function MisEntregasPage() {
           return 0;
         });
         setOrders(list);
+        setError(null);
         setLoading(false);
       },
       (err) => {
         console.error('Error loading admin courier orders:', err);
+        // Only set error on real Firestore query failure
         setError('No se pudieron cargar los pedidos. Revisa tu conexión.');
         setLoading(false);
       }
@@ -277,9 +279,9 @@ export default function MisEntregasPage() {
           {!loading && !error && total === 0 && (
             <div className="bg-white border border-[#E7E7EC] rounded-2xl p-12 text-center shadow-sm space-y-4">
               <CheckCircle size={48} className="text-slate-300 mx-auto" />
-              <h3 className="text-lg font-extrabold text-slate-700">No tienes pedidos asignados</h3>
+              <h3 className="text-lg font-extrabold text-slate-700">No tienes pedidos asignados en modo repartidor.</h3>
               <p className="text-xs text-slate-400 max-w-xs mx-auto">
-                Para recibir pedidos en modo repartidor, un administrador debe asignarte pedidos usando tu UID ({adminCourierId?.slice(0, 12)}…) como <code className="bg-slate-100 px-1 rounded">courierId</code>.
+                Cuando se te asigne un pedido aparecerá aquí. (UID repartidor: {adminCourierId?.slice(0, 12)}…)
               </p>
             </div>
           )}
