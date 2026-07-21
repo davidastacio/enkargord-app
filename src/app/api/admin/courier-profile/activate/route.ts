@@ -1,34 +1,35 @@
 import { NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
-  console.log('[API Debug] [activation-request-received] Iniciando activación de perfil operativo.');
+  console.log('[API Debug] [activation-request-received] Iniciando POST /api/admin/courier-profile/activate.');
+
+  // Safe Env Logging
+  console.log('[API Debug] [firebase-admin-env]', {
+    hasProjectId: Boolean(process.env.FIREBASE_ADMIN_PROJECT_ID),
+    hasClientEmail: Boolean(process.env.FIREBASE_ADMIN_CLIENT_EMAIL),
+    hasPrivateKey: Boolean(process.env.FIREBASE_ADMIN_PRIVATE_KEY),
+    privateKeyHasHeader:
+      process.env.FIREBASE_ADMIN_PRIVATE_KEY?.includes('BEGIN PRIVATE KEY') ?? false,
+  });
 
   try {
-    // 1. Verify if Firebase Admin credentials are set
-    const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
-    const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
-    const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
-
-    if (!projectId || !clientEmail || !privateKey) {
-      console.error('[API Debug] [SERVER_CONFIGURATION_ERROR] Faltan variables de entorno de Firebase Admin en Vercel.');
+    // 1. Initialise Admin services on-demand inside try block
+    let adminAuth;
+    let adminDb;
+    try {
+      adminAuth = getAdminAuth();
+      adminDb = getAdminDb();
+    } catch (initErr: any) {
+      console.error('[API Debug] [SERVER_INIT_ERROR] Error al inicializar Firebase Admin App:', initErr);
       return NextResponse.json(
         {
           success: false,
           error: 'SERVER_CONFIGURATION_ERROR',
-          message: 'Firebase Admin no está configurado correctamente en el servidor.'
-        },
-        { status: 500 }
-      );
-    }
-
-    if (!adminAuth || !adminDb) {
-      console.error('[API Debug] [SERVER_INIT_ERROR] Instancia de Firebase Admin no inicializada.');
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'SERVER_INIT_ERROR',
-          message: 'Error al inicializar servicios de base de datos en el servidor.'
+          message: 'Firebase Admin no está configurado correctamente en Vercel.'
         },
         { status: 500 }
       );
@@ -120,8 +121,8 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         success: true,
-        courierId: uid,
         alreadyExisted: true,
+        courierId: uid,
         courier: {
           id: uid,
           userUid: uid,
@@ -182,8 +183,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      courierId: uid,
       alreadyExisted: false,
+      courierId: uid,
       courier: {
         id: uid,
         userUid: uid,
@@ -196,13 +197,14 @@ export async function POST(request: Request) {
     console.error('[API Debug] [activation-error]', {
       name: error instanceof Error ? error.name : 'UnknownError',
       message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
     });
 
     return NextResponse.json(
       {
         success: false,
         error: 'INTERNAL_ERROR',
-        message: 'No se pudo activar el perfil operativo.'
+        message: error instanceof Error ? error.message : 'No se pudo activar el perfil operativo.'
       },
       { status: 500 }
     );

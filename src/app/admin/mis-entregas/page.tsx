@@ -80,29 +80,45 @@ export default function MisEntregasPage() {
   const adminUid = authUser?.uid;
   const adminCourierId = profile?.courierId || adminUid;
 
-  // 1. Verify if courier profile document exists in `/couriers/{adminCourierId}`
+  // 1. Verify securely via GET /api/admin/courier-profile instead of direct client-side read (bypasses rules limits)
   useEffect(() => {
-    if (!adminCourierId) return;
+    if (!authUser) return;
 
     async function checkCourierProfile() {
       try {
-        console.log(`[Repartidor Debug] Verificando perfil para UID: ${adminUid}, courierId: ${adminCourierId}`);
-        const snap = await getDoc(doc(db, 'couriers', adminCourierId));
-        if (snap.exists()) {
-          console.log(`[Repartidor Debug] Perfil encontrado para ${adminCourierId}`);
+        console.log(`[Repartidor Debug] Consultando API segura para verificar perfil de mensajero: ${adminUid}`);
+        
+        const idToken = await authUser.getIdToken();
+        const res = await fetch('/api/admin/courier-profile', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${idToken}`,
+          },
+        });
+
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          console.warn('[Repartidor Debug] Respuesta no JSON al verificar perfil.');
+          setHasOperativeProfile(false);
+          return;
+        }
+
+        const data = await res.json();
+        if (res.ok && data.success && data.exists) {
+          console.log(`[Repartidor Debug] Perfil encontrado mediante API para courierId: ${data.courier.id}`);
           setHasOperativeProfile(true);
         } else {
-          console.log(`[Repartidor Debug] Perfil NO encontrado para ${adminCourierId}`);
+          console.log(`[Repartidor Debug] Perfil NO encontrado mediante API o error.`);
           setHasOperativeProfile(false);
         }
       } catch (err) {
-        console.error("[Repartidor Debug] Error verificando perfil de mensajero:", err);
+        console.error("[Repartidor Debug] Error al contactar la API de verificación de perfil:", err);
         setHasOperativeProfile(false);
       }
     }
 
     checkCourierProfile();
-  }, [adminCourierId, adminUid]);
+  }, [authUser, adminUid]);
 
   // 2. Firestore real-time listener with clean error/finally separation
   useEffect(() => {

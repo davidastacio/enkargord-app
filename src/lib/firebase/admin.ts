@@ -1,31 +1,53 @@
-import { getApps, initializeApp, cert, getApp } from 'firebase-admin/app';
+import { cert, getApps, initializeApp, getApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 
-const adminConfig = {
-  projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
-  clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-  // Support private key newline formatting from Vercel/Render envs
-  privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-};
+function getFirebaseAdminApp() {
+  const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
+  const privateKeyRaw = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
 
-const hasCredentials = !!(adminConfig.projectId && adminConfig.clientEmail && adminConfig.privateKey);
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let app: any = null;
-
-if (hasCredentials) {
-  try {
-    app = getApps().length === 0 
-      ? initializeApp({ credential: cert(adminConfig) }) 
-      : getApp();
-  } catch (error) {
-    console.error('Error initializing Firebase Admin SDK:', error);
+  if (!projectId || !clientEmail || !privateKeyRaw) {
+    throw new Error('FIREBASE_ADMIN_ENV_MISSING');
   }
+
+  // Handle newlines securely
+  const privateKey = privateKeyRaw.replace(/\\n/g, '\n');
+
+  if (getApps().length > 0) {
+    return getApp();
+  }
+
+  return initializeApp({
+    credential: cert({
+      projectId,
+      clientEmail,
+      privateKey,
+    }),
+  });
 }
 
-// Export auth and db safely using modern modular API
-const adminAuth = app ? getAuth(app) : null;
-const adminDb = app ? getFirestore(app) : null;
+export function getAdminAuth() {
+  return getAuth(getFirebaseAdminApp());
+}
 
-export { adminAuth, adminDb };
+export function getAdminDb() {
+  return getFirestore(getFirebaseAdminApp());
+}
+
+// Keep legacy exports for backward compatibility, wrapped safely so they don't break at import time
+export const adminAuth = typeof window === 'undefined' ? (() => {
+  try {
+    return getAdminAuth();
+  } catch (e) {
+    return null;
+  }
+})() : null;
+
+export const adminDb = typeof window === 'undefined' ? (() => {
+  try {
+    return getAdminDb();
+  } catch (e) {
+    return null;
+  }
+})() : null;
