@@ -332,10 +332,10 @@ export default function AdminDashboard() {
       // 1. Update order document in Firestore
       await updateDoc(doc(db, 'orders', orderId), {
         courierId: courierId,
-        courierUid: courierUid,
+        courierUid: courierUid || courierId,
         courierName: courierName,
-        assignedAt: new Date().toISOString(),
         assignedByUid: profile?.uid || 'ADMIN',
+        assignedAt: new Date().toISOString(),
         status: 'assigned',
         updatedAt: new Date().toISOString()
       });
@@ -365,9 +365,11 @@ export default function AdminDashboard() {
         type: isReassignment ? 'courier_reassigned' : 'courier_assigned',
         previousStatus: targetOrder?.status || 'pending',
         newStatus: 'assigned',
-        actorUid: profile?.uid || 'ADMIN',
-        actorRole: 'admin',
+        performedByUid: profile?.uid || 'ADMIN',
+        performedByRole: 'admin',
         courierId: courierId,
+        courierUid: courierUid || courierId,
+        courierName: courierName,
         note: isReassignment 
           ? `Reasignado de ${previousCourierName} a ${courierName}`
           : `Asignado a ${courierName}`,

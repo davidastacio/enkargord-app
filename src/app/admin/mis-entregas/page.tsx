@@ -168,12 +168,15 @@ export default function MisEntregasPage() {
       await setDoc(doc(db, 'couriers', adminCourierId), {
         id: adminCourierId,
         userUid: adminUid,
+        userRole: 'admin',
+        operationalType: 'admin_courier',
         fullName: profile?.name || authUser.displayName || 'Administrador',
         phone: profile?.phone || '—',
         email: authUser.email || '',
         vehicleType: 'motocicleta',
         vehiclePlate: 'ADMIN-1',
         status: 'available',
+        active: true,
         currentOrderCount: 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -188,8 +191,8 @@ export default function MisEntregasPage() {
     }
   };
 
-  // ── Mark delivery action (same logic as motorista panel) ────────────────────
-  const handleMark = async (status: 'delivered' | 'customer_unreachable') => {
+  // ── Status Transition Handler (reusing courier panel status transitions) ───────────────────
+  const handleUpdateStatus = async (newStatus: 'picked_up' | 'in_transit' | 'customer_unreachable' | 'delivered') => {
     const current = routeOrders[currentIdx];
     if (!current || actionLoading) return;
 
@@ -199,39 +202,36 @@ export default function MisEntregasPage() {
       const orderRef = doc(db, 'orders', current.id);
 
       const updatePayload: any = {
-        status,
+        status: newStatus,
         updatedAt: serverTimestamp(),
       };
 
-      if (status === 'delivered') {
+      if (newStatus === 'picked_up') {
+        updatePayload.pickedUpAt = nowStr;
+      } else if (newStatus === 'in_transit') {
+        updatePayload.inTransitAt = nowStr;
+      } else if (newStatus === 'delivered') {
         updatePayload.deliveredAt = nowStr;
         updatePayload.amountCollected = current.collectionAmount || current.financials?.orderCollectionAmount || 0;
       }
 
       await updateDoc(orderRef, updatePayload);
 
-      // Log event
+      // Subcollection Event Log
       await addDoc(collection(db, 'orders', current.id, 'events'), {
-        type: status === 'delivered' ? 'delivered' : 'customer_unreachable',
-        performedBy: adminCourierId,
+        type: `status_changed_${newStatus}`,
+        previousStatus: current.status,
+        newStatus: newStatus,
+        performedByUid: adminCourierId,
         performedByRole: 'admin',
         createdAt: serverTimestamp(),
-        notes: status === 'delivered' ? 'Entregado en modo repartidor (admin)' : 'No contesta — modo repartidor (admin)',
+        note: `Estado cambiado a ${STATUS_LABEL[newStatus] || newStatus} en modo repartidor (admin)`,
       });
 
-      // Advance to next if not last
-      if (currentIdx >= routeOrders.length - 1) {
-        setCurrentIdx(0);
-      }
-
-      triggerToast(
-        status === 'delivered'
-          ? `✅ ${current.customerName || current.customer?.name} — entregado`
-          : `📵 ${current.customerName || current.customer?.name} — no contesta`
-      );
+      triggerToast(`Estado de ${current.customerName || 'Cliente'} cambiado a: ${STATUS_LABEL[newStatus] || newStatus}`);
     } catch (err) {
-      console.error('Error updating order:', err);
-      triggerToast('Error al actualizar el pedido. Intenta de nuevo.');
+      console.error('Error updating status in mis-entregas:', err);
+      triggerToast('Error al actualizar el estado del pedido.');
     } finally {
       setActionLoading(false);
     }
@@ -443,22 +443,43 @@ export default function MisEntregasPage() {
                     </div>
                   </div>
 
-                  {/* Action buttons */}
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* Action buttons with full status transition support */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {current.status === 'assigned' && (
+                      <button
+                        onClick={() => handleUpdateStatus('picked_up')}
+                        disabled={actionLoading}
+                        className="flex items-center justify-center gap-2 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-extrabold text-xs shadow-md transition-all disabled:opacity-50"
+                      >
+                        <Truck size={16} /> Recoger pedido
+                      </button>
+                    )}
+
+                    {(current.status === 'picked_up' || current.status === 'customer_unreachable') && (
+                      <button
+                        onClick={() => handleUpdateStatus('in_transit')}
+                        disabled={actionLoading}
+                        className="flex items-center justify-center gap-2 py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-extrabold text-xs shadow-md transition-all disabled:opacity-50"
+                      >
+                        <Truck size={16} /> Marcar En Ruta
+                      </button>
+                    )}
+
                     <button
-                      onClick={() => handleMark('delivered')}
+                      onClick={() => handleUpdateStatus('delivered')}
                       disabled={actionLoading}
-                      className="flex items-center justify-center gap-2 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-extrabold text-sm shadow-md shadow-emerald-100 transition-all disabled:opacity-50"
+                      className="flex items-center justify-center gap-2 py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-extrabold text-xs shadow-md shadow-emerald-100 transition-all disabled:opacity-50"
                     >
-                      {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={18} />}
+                      {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
                       Entregado
                     </button>
+
                     <button
-                      onClick={() => handleMark('customer_unreachable')}
+                      onClick={() => handleUpdateStatus('customer_unreachable')}
                       disabled={actionLoading}
-                      className="flex items-center justify-center gap-2 py-4 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-2xl font-extrabold text-sm disabled:opacity-50"
+                      className="flex items-center justify-center gap-2 py-3.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl font-extrabold text-xs disabled:opacity-50"
                     >
-                      <PhoneOff size={18} /> No contesta
+                      <PhoneOff size={16} /> No contesta
                     </button>
                   </div>
 
