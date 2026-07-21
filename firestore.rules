@@ -13,30 +13,67 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return isAuthenticated() && getUserData().role == 'admin';
+      return isAuthenticated() && (getUserData().role == 'admin' || getUserData().role == 'Administrador');
+    }
+
+    function isStore() {
+      return isAuthenticated() && (getUserData().role == 'store' || getUserData().role == 'Tienda');
     }
 
     function isCourier() {
-      return isAuthenticated() && getUserData().role == 'courier';
+      return isAuthenticated() && (getUserData().role == 'courier' || getUserData().role == 'Motorista');
     }
 
-    // Default catch-all rules for authenticated users
-    match /{document=**} {
-      allow read, write: if isAuthenticated();
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users collection rules
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Stores collection rules
+    match /stores/{storeId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() || (isStore() && (request.auth.uid == storeId || getUserData().storeId == storeId));
+      allow delete: if isAdmin();
+    }
+
+    // Orders collection rules
+    match /orders/{orderId} {
+      allow read: if isAdmin() || isCourier() || (isStore() && (resource == null || resource.data.storeId == request.auth.uid || resource.data.storeId == getUserData().storeId));
+      allow create: if isAdmin() || (isStore() && (request.resource.data.storeId == request.auth.uid || request.resource.data.storeId == getUserData().storeId));
+      allow update: if isAdmin() || isCourier() || (isStore() && (resource.data.storeId == request.auth.uid || resource.data.storeId == getUserData().storeId));
+      allow delete: if isAdmin();
+
+      // Subcollection order events
+      match /events/{eventId} {
+        allow read, create: if isAuthenticated();
+      }
     }
 
     // Courier Locations rules
     match /courier_locations/{locationId} {
       allow create: if isCourier() && request.resource.data.courierUid == request.auth.uid;
-      allow read: if isAdmin() || isAuthenticated(); // Allows authenticated stores to fetch active courier locations
+      allow read: if isAuthenticated();
       allow update, delete: if isAdmin();
     }
 
     // Courier Routes rules
     match /courier_routes/{routeId} {
       allow create, update: if isCourier() && request.resource.data.courierUid == request.auth.uid;
-      allow read: if isAdmin() || isCourier() || isAuthenticated();
+      allow read: if isAuthenticated();
       allow delete: if isAdmin();
+    }
+
+    // Settings rules
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
   }
 }

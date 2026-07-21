@@ -1,34 +1,35 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { MapPin, Clock, Truck, ShieldCheck, User, AlertCircle, Play, Phone } from 'lucide-react';
+import { MapPin, Clock, Truck, ShieldCheck, User, Phone, Package, Navigation, Loader2 } from 'lucide-react';
 import MapComponent from '@/components/MapComponent';
 import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import WhatsAppContactButton from '@/components/WhatsAppContactButton';
 
 export default function StoreTracking() {
   const { profile } = useAuth() as any;
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string>('');
-  const [courierInfo, setCourierInfo] = useState<any | null>(null);
+  const [courierLocation, setCourierLocation] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
   // 1. Fetch active orders belonging to store
   useEffect(() => {
-    if (!profile?.storeId) return;
+    if (!profile?.uid) return;
+    const storeId = profile.storeId || profile.uid;
 
     const q = query(
       collection(db, 'orders'),
-      where('storeId', '==', profile.storeId),
-      where('status', 'in', ['assigned', 'picked_up', 'in_transit', 'customer_unreachable'])
+      where('storeId', '==', storeId),
+      where('status', 'in', ['assigned', 'picked_up', 'in_transit', 'on_route', 'customer_unreachable', 'next_delivery'])
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setOrders(list);
 
-      // Pre-select first order if none selected
       if (list.length > 0 && !selectedOrderId) {
         setSelectedOrderId(list[0].id);
       }
@@ -41,24 +42,25 @@ export default function StoreTracking() {
     return () => unsubscribe();
   }, [profile, selectedOrderId]);
 
-  // Selected Order
   const activeOrder = orders.find(o => o.id === selectedOrderId) || orders[0];
 
-  // 2. Fetch Courier document in real-time matching activeOrder courierId
+  // 2. Fetch live courier location if courierUid/courierId is present
   useEffect(() => {
-    if (!activeOrder?.courierId) {
-      setCourierInfo(null);
+    const courierUid = activeOrder?.courierUid || activeOrder?.courierId;
+    if (!courierUid) {
+      setCourierLocation(null);
       return;
     }
 
-    const unsubscribe = onSnapshot(doc(db, 'couriers', activeOrder.courierId), (docSnap) => {
+    const unsubscribe = onSnapshot(doc(db, 'courier_locations', courierUid), (docSnap) => {
       if (docSnap.exists()) {
-        setCourierInfo(docSnap.data());
+        setCourierLocation(docSnap.data());
       } else {
-        setCourierInfo(null);
+        setCourierLocation(null);
       }
-    }, (error) => {
-      console.error("Error listening to courier in store tracking:", error);
+    }, (err) => {
+      console.error("Error fetching courier live location:", err);
+      setCourierLocation(null);
     });
 
     return () => unsubscribe();
@@ -66,181 +68,159 @@ export default function StoreTracking() {
 
   if (loading) {
     return (
-      <div className="max-w-lg mx-auto text-center py-20">
-        <div className="w-10 h-10 border-4 border-[#d3121a] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Cargando monitoreo...</h2>
+      <div className="py-20 text-center flex flex-col items-center justify-center gap-3">
+        <Loader2 size={28} className="animate-spin text-[#d3121a]" />
+        <span className="text-xs font-bold text-slate-400">Cargando mapa de seguimiento en tiempo real...</span>
       </div>
     );
   }
 
-  // Check if courier has recent location updates (less than 2 minutes old)
-  const isOnline = () => {
-    if (!courierInfo?.lastLocation?.updatedAt) return false;
-    const diff = Date.now() - new Date(courierInfo.lastLocation.updatedAt).getTime();
-    return diff < 120000; // 2 minutes in ms
-  };
+  if (orders.length === 0) {
+    return (
+      <div className="bg-white border border-[#E7E7EC] rounded-2xl p-12 text-center space-y-4 shadow-sm max-w-lg mx-auto">
+        <Navigation size={40} className="text-slate-300 mx-auto" />
+        <h3 className="text-lg font-extrabold text-slate-900">No hay envíos activos en ruta</h3>
+        <p className="text-xs text-slate-400 max-w-xs mx-auto">
+          El mapa de seguimiento mostrará la ubicación en vivo cuando tu tienda tenga pedidos en estado asignado o en tránsito.
+        </p>
+      </div>
+    );
+  }
 
-  const hasLiveTracking = courierInfo?.trackingStatus === 'active' && isOnline();
+  // Real Map markers
+  const deliveryLat = activeOrder?.latitude || activeOrder?.deliveryLatitude;
+  const deliveryLng = activeOrder?.longitude || activeOrder?.deliveryLongitude;
+  const hasDeliveryCoords = deliveryLat && deliveryLng;
 
-  // Status mapping
-  const statusLabels: Record<string, string> = {
-    assigned: 'Repartidor Asignado',
-    picked_up: 'Recogido en Tienda',
-    in_transit: 'En Tránsito',
-    customer_unreachable: 'No contesta'
-  };
+  const courierLat = courierLocation?.latitude;
+  const courierLng = courierLocation?.longitude;
+  const hasCourierCoords = courierLat && courierLng;
+
+  const markers: any[] = [];
+  if (hasDeliveryCoords) {
+    markers.push({
+      id: 'dest',
+      position: { lat: deliveryLat, lng: deliveryLng },
+      title: `Destino: ${activeOrder.customerName || 'Cliente'}`,
+    });
+  }
+  if (hasCourierCoords) {
+    markers.push({
+      id: 'courier',
+      position: { lat: courierLat, lng: courierLng },
+      title: `Motorista: ${activeOrder.courierName || 'Repartidor'}`,
+    });
+  }
 
   return (
     <div className="space-y-8 animate-fade-in">
-      
-      {/* Header & Selector */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-extrabold text-slate-955 tracking-tight">Seguimiento de Entregas en Vivo</h2>
-          <p className="text-xs text-slate-400 mt-1 font-medium">
-            Rastrea las rutas de tus repartidores y monitorea los tiempos de entrega.
-          </p>
-        </div>
-
-        {orders.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-500">Monitorear Pedido:</span>
-            <select
-              value={selectedOrderId}
-              onChange={(e) => setSelectedOrderId(e.target.value)}
-              className="px-3 py-2 text-xs font-bold border border-[#E7E7EC] rounded-xl bg-white focus:outline-none"
-            >
-              {orders.map(o => (
-                <option key={o.id} value={o.id}>
-                  {o.customerName} ({o.tracking || o.id})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+      <div>
+        <h2 className="text-xl font-extrabold text-slate-950 tracking-tight">Seguimiento en Tiempo Real</h2>
+        <p className="text-xs text-slate-400 mt-1 font-medium">
+          Monitorea la ubicación real de los motoristas que transportan los envíos de tu tienda.
+        </p>
       </div>
 
-      {orders.length === 0 ? (
-        <div className="bg-white border border-[#E7E7EC] rounded-2xl p-12 text-center shadow-sm">
-          <Truck size={40} className="text-slate-300 mx-auto mb-3" />
-          <p className="font-bold text-slate-700">No hay entregas activas en curso</p>
-          <p className="text-xs text-slate-400 mt-1">
-            Los repartidores aparecerán aquí en vivo tan pronto les asignes pedidos en la Torre de Control.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
-          {/* Map column */}
-          <div className="lg:col-span-8 bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[#d3121a] uppercase tracking-widest block">
-                {hasLiveTracking ? '🟢 Transmisión de ubicación en vivo' : '📡 Ubicación fuera de línea'}
-              </span>
-              {courierInfo?.lastLocation?.updatedAt && (
-                <span className="text-[10px] text-slate-400 font-semibold">
-                  Act. hace {Math.round((Date.now() - new Date(courierInfo.lastLocation.updatedAt).getTime()) / 60000)} min.
-                </span>
-              )}
-            </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* Active Orders List */}
+        <div className="bg-white border border-[#E7E7EC] rounded-2xl p-4 shadow-sm space-y-3">
+          <h3 className="font-extrabold text-slate-900 text-sm px-2">Envíos Activos ({orders.length})</h3>
 
-            <div className="w-full h-[400px] rounded-xl overflow-hidden relative">
-              {hasLiveTracking && courierInfo.lastLocation ? (
-                <MapComponent activeCouriers={[
-                  {
-                    name: courierInfo.fullName || activeOrder.courierName,
-                    status: courierInfo.status === 'on_route' ? 'En ruta' : 'Disponible',
-                    lat: courierInfo.lastLocation.latitude,
-                    lng: courierInfo.lastLocation.longitude,
-                    pendingCount: courierInfo.currentOrderCount || 1
-                  }
-                ]} />
-              ) : (
-                <div className="w-full h-full bg-slate-50 flex flex-col items-center justify-center text-slate-400 text-xs p-6 text-center border border-dashed border-slate-200 rounded-xl">
-                  <AlertCircle size={32} className="text-slate-300 mb-2 animate-pulse" />
-                  <span className="font-bold text-slate-600">Ubicación en vivo no disponible</span>
-                  <span className="max-w-xs mt-1 text-[11px]">
-                    El repartidor debe iniciar la ruta de entregas desde su teléfono y activar el GPS para transmitir su señal.
+          <div className="space-y-2 max-h-[500px] overflow-y-auto custom-scrollbar">
+            {orders.map((o) => (
+              <div
+                key={o.id}
+                onClick={() => setSelectedOrderId(o.id)}
+                className={`p-3.5 rounded-xl border text-xs cursor-pointer transition-all ${
+                  selectedOrderId === o.id
+                    ? 'border-[#d3121a] bg-[#fee2e2]/20 font-bold'
+                    : 'border-[#E7E7EC] hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-mono text-slate-900 font-extrabold">#{o.tracking || o.id}</span>
+                  <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                    {o.status}
                   </span>
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Courier details & progression */}
-          <div className="lg:col-span-4 space-y-6">
-            
-            {/* Courier Card */}
-            {courierInfo ? (
-              <div className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm space-y-4">
-                <h4 className="font-extrabold text-slate-900 text-sm border-b border-slate-100 pb-2">
-                  🛵 Repartidor Asignado
-                </h4>
-
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#fee2e2] text-[#d3121a] flex items-center justify-center font-bold">
-                    {(courierInfo.fullName || 'R').substring(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-xs text-slate-900">{courierInfo.fullName}</h5>
-                    <span className="text-[10px] text-slate-400 font-semibold">
-                      {courierInfo.vehicleType} · Placa {courierInfo.vehiclePlate}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="text-[11px] font-semibold text-slate-600 space-y-1.5 pt-2 border-t border-slate-100">
-                  <div className="flex justify-between">
-                    <span>Estado del GPS:</span>
-                    <span className={`font-bold ${hasLiveTracking ? 'text-emerald-600' : 'text-slate-400'}`}>
-                      {hasLiveTracking ? '🟢 En vivo' : '🔴 Inactivo'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Teléfono:</span>
-                    <a href={`tel:${courierInfo.phone}`} className="text-slate-900 hover:underline flex items-center gap-1">
-                      <Phone size={10} /> {courierInfo.phone}
-                    </a>
-                  </div>
-                  <div className="flex justify-between text-xs font-extrabold text-[#d3121a] pt-1">
-                    <span>Estado del pedido:</span>
-                    <span>{statusLabels[activeOrder.status] || activeOrder.status}</span>
-                  </div>
-                </div>
+                <p className="text-slate-800 font-bold truncate">{o.customerName || 'Cliente'}</p>
+                <p className="text-[11px] text-slate-400 truncate">{o.formattedAddress || o.street || 'Sin dirección'}</p>
               </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Map and Details Column */}
+        <div className="lg:col-span-2 space-y-6">
+          
+          {/* Map View */}
+          <div className="bg-white border border-[#E7E7EC] rounded-2xl overflow-hidden shadow-sm h-[360px] relative">
+            {hasCourierCoords || hasDeliveryCoords ? (
+              <MapComponent
+                activeCouriers={[
+                  {
+                    name: activeOrder?.courierName || 'Motorista',
+                    status: activeOrder?.status || 'on_route',
+                    lat: courierLat || deliveryLat,
+                    lng: courierLng || deliveryLng,
+                    pendingCount: orders.length,
+                  }
+                ]}
+              />
             ) : (
-              <div className="bg-white border border-[#E7E7EC] rounded-2xl p-6 text-center text-slate-400 text-xs">
-                Cargando información del repartidor asignado...
+              <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 text-center p-6 space-y-2">
+                <MapPin size={32} className="text-slate-300" />
+                <p className="text-xs font-bold text-slate-600">El motorista todavía no está compartiendo ubicación en vivo.</p>
+                <p className="text-[11px] text-slate-400">Las coordenadas se actualizarán automáticamente cuando la app del motorista esté activa.</p>
               </div>
             )}
+          </div>
 
-            {/* Logistics Timeline */}
-            <div className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm space-y-6">
-              <h4 className="font-extrabold text-slate-900 text-sm border-b border-slate-100 pb-2">
-                📋 Información Logística
-              </h4>
-
-              <div className="text-xs space-y-3 font-semibold text-slate-600">
+          {/* Active Order Card Info */}
+          {activeOrder && (
+            <div className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm space-y-4 text-xs font-semibold">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Destinatario</span>
-                  <span className="text-slate-800">{activeOrder.customerName}</span>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase">Motorista Asignado</span>
+                  <p className="text-slate-900 font-bold text-sm flex items-center gap-2 mt-0.5">
+                    <Truck size={16} className="text-[#d3121a]" />
+                    {activeOrder.courierName || 'No asignado'}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <WhatsAppContactButton
+                    orderId={activeOrder.id}
+                    phone={activeOrder.customerPhone || ''}
+                    storeName={profile?.name || 'Tienda'}
+                    tracking={activeOrder.tracking || activeOrder.id}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-1">
+                <div>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase block">Cliente</span>
+                  <span className="text-slate-800 font-bold">{activeOrder.customerName || 'Cliente'}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Dirección de Entrega</span>
-                  <span className="text-slate-800 leading-relaxed block">{activeOrder.formattedAddress || activeOrder.street}</span>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase block">Última Actualización</span>
+                  <span className="text-slate-800">
+                    {courierLocation?.updatedAt ? new Date(courierLocation.updatedAt).toLocaleTimeString('es-DO') : 'Sin transmisión en vivo'}
+                  </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Monto de Recaudo COD</span>
-                  <span className="text-sm font-extrabold text-[#d3121a]">RD${(activeOrder.collectionAmount || 0).toLocaleString()}</span>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase block">Zona Actual</span>
+                  <span className="text-slate-800">{activeOrder.sectorName || 'Santo Domingo'}</span>
                 </div>
               </div>
             </div>
-
-          </div>
+          )}
 
         </div>
-      )}
 
+      </div>
     </div>
   );
 }
