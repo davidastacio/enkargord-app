@@ -44,7 +44,7 @@ interface Financials {
 interface Order {
   id: string;
   trackingId: string;
-  status: 'pending' | 'in_transit' | 'delivered' | 'no_contesta';
+  status: 'pending' | 'in_transit' | 'on_route' | 'delivered' | 'no_contesta' | 'cancelled' | 'assigned' | string;
   storeId: string;
   storeName: string;
   courierName: string;
@@ -185,6 +185,7 @@ export default function AdminDashboard() {
   // Shared Data States
   const [orders, setOrders] = useState<Order[]>([]);
   const [couriers, setCouriers] = useState<Courier[]>([]);
+  const [storesMap, setStoresMap] = useState<Record<string, string>>({});
   
   // Modals States
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
@@ -207,17 +208,34 @@ export default function AdminDashboard() {
 
   // Hydrate states from Firestore & localstorage on Client Side mount
   useEffect(() => {
+    // 0. Subscribe to Users/Stores to resolve names
+    const qus = query(collection(db, 'users'));
+    const unsubscribeUsers = onSnapshot(qus, (snapshot) => {
+      const mapping: Record<string, string> = {};
+      snapshot.docs.forEach((docSnap) => {
+        const u = docSnap.data();
+        const sName = u.storeName || u.displayName || u.name || 'Tienda';
+        mapping[docSnap.id] = sName;
+        if (u.storeId) {
+          mapping[u.storeId] = sName;
+        }
+      });
+      setStoresMap(mapping);
+    }, (error) => {
+      console.error("Error reading users in Admin dashboard:", error);
+    });
     // 1. Subscribe to Firestore orders in real-time
     const q = query(collection(db, 'orders'));
     const unsubscribeOrders = onSnapshot(q, (snapshot) => {
       const firestoreOrders = snapshot.docs.map((docSnap) => {
         const o = docSnap.data();
+        const storeNameReal = o.storeId ? (storesMap[o.storeId] || 'Tienda Registrada') : 'Tienda Registrada';
         return {
           id: o.id || docSnap.id,
           trackingId: o.tracking || o.trackingId || docSnap.id,
           status: o.status || 'pending',
           storeId: o.storeId || 'STORE_01',
-          storeName: o.storeName || 'Moda Express RD',
+          storeName: storeNameReal,
           courierName: o.courierName || 'No asignado',
           time: o.time || (o.createdAt ? new Date(o.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A'),
           createdAt: o.createdAt || new Date().toISOString(),
@@ -245,6 +263,10 @@ export default function AdminDashboard() {
           }
         };
       });
+      
+      // Client-side desc sort to avoid Firestore index builds requirement constraints
+      firestoreOrders.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      
       setOrders(firestoreOrders as Order[]);
     }, (error) => {
       console.error("Error reading Firestore orders in Admin dashboard:", error);
@@ -288,10 +310,11 @@ export default function AdminDashboard() {
     }
 
     return () => {
+      unsubscribeUsers();
       unsubscribeOrders();
       unsubscribeCouriers();
     };
-  }, []);
+  }, [storesMap]);
 
   // Show dynamic toast helper
   const triggerToast = (message: string) => {
@@ -610,11 +633,12 @@ export default function AdminDashboard() {
 
   // KPI Calculations
   const statTotal = orders.length;
-  const statTransit = orders.filter(o => o.status === 'in_transit').length;
+  const statTransit = orders.filter(o => o.status === 'in_transit' || o.status === 'on_route').length;
   const statDelivered = orders.filter(o => o.status === 'delivered').length;
+  // Outstanding cash (recaudo) in transit or pending in street
   const statCajaCalle = orders
-    .filter(o => o.status === 'delivered')
-    .reduce((sum, o) => sum + o.financials.totalCollected, 0);
+    .filter(o => o.status !== 'delivered' && o.status !== 'cancelled' && o.status !== 'no_contesta')
+    .reduce((sum, o) => sum + (o.financials.productCost || 0), 0);
 
   // Donut Graph data format for Recharts
   const donutData = [
