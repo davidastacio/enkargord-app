@@ -20,6 +20,7 @@ import { DEFAULT_ORDERS, type CourierOrder, type OrderStatus, buildWhatsAppUrl, 
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import WhatsAppContactButton from '@/components/WhatsAppContactButton';
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: string }> = {
   assigned:          { label: 'Asignado',            color: 'text-slate-700',   bg: 'bg-slate-100' },
@@ -291,14 +292,13 @@ export default function PedidosPage() {
                 >
                   <Phone size={13} /> Llamar
                 </a>
-                <a
-                  href={waUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-center gap-1.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-700 transition-all"
-                >
-                  <MessageCircle size={13} /> WA
-                </a>
+                <WhatsAppContactButton
+                  phone={order.customer.phone}
+                  orderId={order.id}
+                  storeName={order.storeName || 'Tienda'}
+                  trackingId={order.trackingId || order.id}
+                  templateKey={(['in_transit', 'close', 'arrived', 'no_contact', 'rescheduled'] as const)[templateKey] || 'in_transit'}
+                />
                 <button
                   onClick={() => printLabel(order)}
                   className="flex items-center justify-center gap-1.5 py-2.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl text-xs font-bold text-blue-700 transition-all"

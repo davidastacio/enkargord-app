@@ -22,7 +22,9 @@ import {
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useCourierTracking } from '@/hooks/useCourierTracking';
 import { buildWhatsAppUrl, DEFAULT_WHATSAPP_TEMPLATES } from '@/data/courier';
+import WhatsAppContactButton from '@/components/WhatsAppContactButton';
 
 type OrderStatus =
   | "pending"
@@ -49,6 +51,15 @@ export default function PedidoDetallePage() {
   const params = useParams();
   const orderId = params.id as string;
   const { profile } = useAuth() as any;
+  const { sendManualLocation } = useCourierTracking();
+  const [sendingLocation, setSendingLocation] = useState(false);
+
+  const handleSendLocation = async () => {
+    setSendingLocation(true);
+    const res = await sendManualLocation(orderId);
+    alert(res.msg);
+    setSendingLocation(false);
+  };
 
   const [order, setOrder] = useState<any | null>(null);
   const [events, setEvents] = useState<OrderEvent[]>([]);
@@ -330,18 +341,13 @@ export default function PedidoDetallePage() {
                 <a href={`tel:${order.customerPhone}`} className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-slate-50 hover:bg-slate-100 border border-[#E7E7EC] rounded-xl font-bold text-slate-700 transition-all">
                   <Phone size={13} /> Llamar
                 </a>
-                <a
-                  href={buildWhatsAppUrl(
-                    order.customerPhone,
-                    DEFAULT_WHATSAPP_TEMPLATES[0].template,
-                    { motorista: profile?.fullName || 'Motorista', tienda: order.storeName || 'Tienda', tracking: order.tracking }
-                  )}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl font-bold text-emerald-700 transition-all"
-                >
-                  <MessageCircle size={13} /> WhatsApp
-                </a>
+                <WhatsAppContactButton
+                  phone={order.customerPhone}
+                  orderId={order.id}
+                  storeName={order.storeName || 'Tienda'}
+                  trackingId={order.tracking || order.id}
+                  templateKey="in_transit"
+                />
               </div>
             </div>
 
@@ -455,6 +461,18 @@ export default function PedidoDetallePage() {
                 )}
               </div>
             )}
+            
+            {/* Location manual send button */}
+            <div className="pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={handleSendLocation}
+                disabled={sendingLocation}
+                className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-[#E7E7EC] rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all"
+              >
+                📍 Enviar ubicación actual
+              </button>
+            </div>
           </div>
         )}
 

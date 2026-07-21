@@ -245,13 +245,7 @@ export default function AdminDashboard() {
       setOrders(firestoreOrders as Order[]);
     }, (error) => {
       console.error("Error reading Firestore orders in Admin dashboard:", error);
-      // Fallback if permission denied / offline
-      const localOrders = localStorage.getItem('enkargord_orders');
-      if (localOrders) {
-        setOrders(JSON.parse(localOrders));
-      } else {
-        setOrders(DEFAULT_ORDERS);
-      }
+      setOrders([]);
     });
 
     const qc = query(collection(db, 'couriers'));
@@ -271,12 +265,7 @@ export default function AdminDashboard() {
       setCouriers(firestoreCouriers as Courier[]);
     }, (error) => {
       console.error("Error reading Firestore couriers in Admin dashboard:", error);
-      const localCouriers = localStorage.getItem('enkargord_couriers');
-      if (localCouriers) {
-        setCouriers(JSON.parse(localCouriers));
-      } else {
-        setCouriers(DEFAULT_COURIERS);
-      }
+      setCouriers([]);
     });
 
     // Read active tab from query parameters
@@ -617,17 +606,16 @@ export default function AdminDashboard() {
     { name: 'No Contesta', value: orders.filter(o => o.status === 'no_contesta').length, color: '#ef4444' }
   ].filter(item => item.value > 0);
 
-  // Leaflet format active couriers array
-  const leafletActiveCouriers = orders
-    .filter(o => o.status === 'in_transit' && o.courierName !== 'No asignado')
-    .map(order => {
-      const courierObj = couriers.find(c => c.name === order.courierName);
+  // Leaflet format active couriers array mapping directly from couriers database
+  const leafletActiveCouriers = couriers
+    .filter((c: any) => c.trackingStatus === 'active' && c.lastLocation)
+    .map((c: any) => {
       return {
-        name: order.courierName,
-        status: courierObj && courierObj.status !== 'Offline' ? 'Activo' : 'Offline',
-        lat: order.deliveryAddress.coordinates?.lat || 18.4861,
-        lng: order.deliveryAddress.coordinates?.lng || -69.9312,
-        pendingCount: orders.filter(o => o.courierName === order.courierName && o.status === 'in_transit').length
+        name: c.name || c.fullName || 'Repartidor',
+        status: c.trackingStatus === 'active' ? 'En Vivo' : 'Offline',
+        lat: (c.lastLocation as any).latitude || 18.4795,
+        lng: (c.lastLocation as any).longitude || -69.9326,
+        pendingCount: c.currentOrderCount || 0
       };
     });
 

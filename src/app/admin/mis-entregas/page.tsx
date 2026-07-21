@@ -16,80 +16,170 @@ import {
   CheckCircle,
   PhoneOff,
   Phone,
-  MessageCircle,
   MapPin,
   DollarSign,
   ChevronRight,
-  Info,
+  Loader2,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import {
-  DEFAULT_ORDERS,
-  type CourierOrder,
-  type OrderStatus,
-  buildWhatsAppUrl,
-  DEFAULT_WHATSAPP_TEMPLATES,
-} from '@/data/courier';
+  collection,
+  query,
+  where,
+  onSnapshot,
+  doc,
+  updateDoc,
+  addDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import { useAuth } from '@/hooks/useAuth';
+import WhatsAppContactButton from '@/components/WhatsAppContactButton';
+
+// ─── Status label map (same as courier panel) ─────────────────────────────────
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'Pendiente',
+  assigned: 'Asignado',
+  picked_up: 'Recogido',
+  in_transit: 'En ruta',
+  next_delivery: 'Próximo',
+  no_answer: 'No contesta',
+  customer_unreachable: 'No contesta',
+  rescheduled: 'Reprogramado',
+  delivered: 'Entregado',
+  failed_delivery: 'Fallido',
+  returned: 'Devuelto',
+  pending_settlement: 'Pend. liquidación',
+  settled: 'Liquidado',
+};
+
+// Active/working statuses
+const ACTIVE_STATUSES = ['assigned', 'picked_up', 'in_transit', 'customer_unreachable', 'next_delivery'];
+const RESOLVED_STATUSES = ['delivered', 'customer_unreachable', 'failed_delivery', 'returned'];
 
 export default function MisEntregasPage() {
-  const [orders, setOrders] = useState<CourierOrder[]>([]);
+  const { user: authUser, profile } = useAuth() as any;
+
+  // Real Firestore data
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // UI state
   const [routeActive, setRouteActive] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
+  // ── Determine the courierId for this admin ──────────────────────────────────
+  // Admins who operate as courier use their UID as courierId
+  const adminCourierId = profile?.courierId || authUser?.uid;
+
+  // ── Firestore real-time listener ────────────────────────────────────────────
   useEffect(() => {
-    const stored = localStorage.getItem('enkargord_courier_orders');
-    setOrders(stored ? JSON.parse(stored) : DEFAULT_ORDERS);
-  }, []);
+    if (!adminCourierId) return;
 
-  const saveOrders = (updated: CourierOrder[]) => {
-    setOrders(updated);
-    localStorage.setItem('enkargord_courier_orders', JSON.stringify(updated));
-  };
+    setLoading(true);
+    setError(null);
 
+    // Query orders assigned to this admin's courierId or uid
+    const q = query(
+      collection(db, 'orders'),
+      where('courierId', '==', adminCourierId),
+      where('status', 'in', ACTIVE_STATUSES)
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        // Sort by routeOrder if exists, then by createdAt
+        list.sort((a: any, b: any) => {
+          if (a.routeOrder !== undefined && b.routeOrder !== undefined) return a.routeOrder - b.routeOrder;
+          return 0;
+        });
+        setOrders(list);
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Error loading admin courier orders:', err);
+        setError('No se pudieron cargar los pedidos. Revisa tu conexión.');
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [adminCourierId]);
+
+  // ── Toast helper ────────────────────────────────────────────────────────────
   const triggerToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
   };
 
-  // In "Modo Repartidor", admin can see all active orders across all couriers
-  const routeOrders = orders
-    .filter((o) => !['delivered', 'settled', 'returned', 'failed_delivery'].includes(o.status))
-    .sort((a, b) => (a.routeOrder ?? 99) - (b.routeOrder ?? 99));
+  // ── Mark delivery action (same logic as motorista panel) ────────────────────
+  const handleMark = async (status: 'delivered' | 'customer_unreachable') => {
+    const current = routeOrders[currentIdx];
+    if (!current || actionLoading) return;
 
+    setActionLoading(true);
+    try {
+      const nowStr = new Date().toISOString();
+      const orderRef = doc(db, 'orders', current.id);
+
+      const updatePayload: any = {
+        status,
+        updatedAt: serverTimestamp(),
+      };
+
+      if (status === 'delivered') {
+        updatePayload.deliveredAt = nowStr;
+        updatePayload.amountCollected = current.collectionAmount || current.financials?.orderCollectionAmount || 0;
+      }
+
+      await updateDoc(orderRef, updatePayload);
+
+      // Log event
+      await addDoc(collection(db, 'orders', current.id, 'events'), {
+        type: status === 'delivered' ? 'delivered' : 'customer_unreachable',
+        performedBy: adminCourierId,
+        performedByRole: 'admin',
+        createdAt: serverTimestamp(),
+        notes: status === 'delivered' ? 'Entregado en modo repartidor (admin)' : 'No contesta — modo repartidor (admin)',
+      });
+
+      // Advance to next if not last
+      if (currentIdx >= routeOrders.length - 1) {
+        setCurrentIdx(0);
+      }
+
+      triggerToast(
+        status === 'delivered'
+          ? `✅ ${current.customerName || current.customer?.name} — entregado`
+          : `📵 ${current.customerName || current.customer?.name} — no contesta`
+      );
+    } catch (err) {
+      console.error('Error updating order:', err);
+      triggerToast('Error al actualizar el pedido. Intenta de nuevo.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // ── Derived data ─────────────────────────────────────────────────────────────
+  const routeOrders = orders; // Already filtered to active statuses
   const current = routeOrders[currentIdx];
   const total = routeOrders.length;
-  const delivered = orders.filter((o) => o.status === 'delivered').length;
-  const totalCollected = orders.filter((o) => o.status === 'delivered')
-    .reduce((s, o) => s + (o.amountCollected ?? 0), 0);
 
-  const handleMark = (status: 'delivered' | 'no_answer') => {
-    if (!current) return;
-    const updated = orders.map((o) =>
-      o.id === current.id
-        ? {
-            ...o,
-            status: status as OrderStatus,
-            ...(status === 'delivered'
-              ? { deliveredAt: new Date().toISOString(), amountCollected: o.financials.orderCollectionAmount }
-              : {}),
-          }
-        : o
-    );
-    saveOrders(updated);
-    if (currentIdx >= routeOrders.length - 1) setCurrentIdx(0);
-    triggerToast(status === 'delivered'
-      ? `✅ ${current.customer.name} — entregado`
-      : `📵 ${current.customer.name} — no contesta`
-    );
-  };
+  // Today's delivered (from all orders, not just active — listen separately if needed)
+  const deliveredToday = orders.filter((o) => o.status === 'delivered').length;
+  const totalCollected = orders
+    .filter((o) => o.status === 'delivered')
+    .reduce((s: number, o: any) => s + (o.amountCollected || 0), 0);
+  const noAnswerCount = orders.filter((o) => o.status === 'customer_unreachable').length;
 
-  const STATUS_LABEL: Record<OrderStatus, string> = {
-    assigned: 'Asignado', picked_up: 'Recogido', on_route: 'En ruta',
-    next_delivery: 'Próximo', no_answer: 'No contesta', rescheduled: 'Reprogramado',
-    delivered: 'Entregado', failed_delivery: 'Fallido', returned: 'Devuelto',
-    pending_settlement: 'Pend. liquidación', settled: 'Liquidado',
-  };
-
+  // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F8F9FB] font-sans text-slate-800 antialiased">
 
@@ -110,18 +200,21 @@ export default function MisEntregasPage() {
         </div>
         <nav className="p-3 space-y-1 flex-1">
           {[
-            { href: '/admin',             icon: Package2, label: 'Dashboard Admin' },
-            { href: '/admin/mensajeros',  icon: Users,    label: 'Mensajeros' },
+            { href: '/admin', icon: Package2, label: 'Dashboard Admin' },
+            { href: '/admin/usuarios', icon: Users, label: 'Usuarios' },
             { href: '/admin/operaciones', icon: Settings, label: 'Configuración' },
-            { href: '/admin/mis-entregas',icon: Truck,    label: 'Modo Repartidor' },
+            { href: '/admin/mis-entregas', icon: Truck, label: 'Modo Repartidor' },
           ].map(({ href, icon: Icon, label }) => (
             <Link
               key={href}
               href={href}
-              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-all text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+              className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-all ${
+                href === '/admin/mis-entregas'
+                  ? 'bg-[#d3121a]/5 text-[#d3121a]'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
             >
-              <Icon size={17} />
-              {label}
+              <Icon size={17} /> {label}
             </Link>
           ))}
         </nav>
@@ -141,11 +234,10 @@ export default function MisEntregasPage() {
         <header className="bg-white border-b border-[#E7E7EC] px-8 py-5 flex items-center justify-between sticky top-0 z-30">
           <div>
             <h1 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
-              <Shield size={18} className="text-[#d3121a]" />
-              Modo Repartidor
+              <Shield size={18} className="text-[#d3121a]" /> Modo Repartidor
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
-              Administrador operando como motorista · Acceso a todos los pedidos activos
+              Administrador operando como motorista · UID: {adminCourierId?.slice(0, 12)}…
             </p>
           </div>
           <button
@@ -156,165 +248,197 @@ export default function MisEntregasPage() {
                 : 'bg-[#d3121a] text-white shadow-red-100 hover:bg-[#b00f14]'
             }`}
           >
-            {routeActive ? <><Pause size={15} />Pausar ruta</> : <><Play size={15} />Iniciar ruta</>}
+            {routeActive ? <><Pause size={15} /> Pausar ruta</> : <><Play size={15} /> Iniciar ruta</>}
           </button>
         </header>
 
         <div className="p-8 space-y-6 max-w-4xl">
 
-          {/* Info banner */}
-          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-start gap-3">
-            <Info size={16} className="text-blue-500 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-blue-700 font-medium">
-              En Modo Repartidor, el administrador puede operar como motorista: marcar entregas, registrar cobros, contactar clientes y avanzar en la ruta. Toda la lógica operativa es compartida con el panel del motorista.
-            </p>
-          </div>
-
-          {/* KPIs */}
-          <div className="grid grid-cols-4 gap-4">
-            {[
-              { label: 'Total activos',   value: routeOrders.length,    color: 'text-slate-800' },
-              { label: 'Entregados hoy',  value: delivered,             color: 'text-emerald-700' },
-              { label: 'Recaudado',       value: `RD$${totalCollected.toLocaleString()}`, color: 'text-[#d3121a]' },
-              { label: 'No contactados',  value: orders.filter((o) => o.status === 'no_answer').length, color: 'text-red-600' },
-            ].map((kpi) => (
-              <div key={kpi.label} className="bg-white border border-[#E7E7EC] rounded-2xl p-4 shadow-sm">
-                <div className={`text-2xl font-extrabold ${kpi.color}`}>{kpi.value}</div>
-                <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest mt-1">{kpi.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Current order */}
-          {current ? (
-            <div className="space-y-4">
-              <div className="bg-gradient-to-br from-[#d3121a] to-[#b00f14] rounded-2xl p-6 text-white shadow-lg shadow-red-200">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-bold uppercase tracking-widest text-red-200">
-                    Pedido actual ({currentIdx + 1}/{total})
-                  </span>
-                  <span className="text-xs font-extrabold bg-white/20 px-3 py-1 rounded-full">{current.trackingId}</span>
-                </div>
-                <h2 className="text-xl font-extrabold">{current.customer.name}</h2>
-                <div className="flex items-start gap-2 mt-2 mb-3">
-                  <MapPin size={14} className="text-red-200 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-red-100">{current.deliveryAddress.fullAddress}</p>
-                </div>
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="text-xs text-red-200">Tienda:</span>
-                  <span className="text-sm font-bold">{current.storeName}</span>
-                  <span className="ml-auto text-xl font-extrabold">
-                    RD${current.financials.orderCollectionAmount.toLocaleString()}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <a
-                    href={`tel:${current.customer.phone}`}
-                    className="flex items-center justify-center gap-2 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-sm font-bold text-white"
-                  >
-                    <Phone size={15} /> Llamar
-                  </a>
-                  <a
-                    href={buildWhatsAppUrl(
-                      current.customer.phone,
-                      DEFAULT_WHATSAPP_TEMPLATES[0].template,
-                      { motorista: 'Administrador', tienda: current.storeName, tracking: current.trackingId }
-                    )}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-center gap-2 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-sm font-bold text-white"
-                  >
-                    <MessageCircle size={15} /> WhatsApp
-                  </a>
-                </div>
-              </div>
-
-              {/* Action buttons */}
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => handleMark('delivered')}
-                  className="flex items-center justify-center gap-2 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-extrabold text-sm shadow-md shadow-emerald-100 transition-all"
-                >
-                  <CheckCircle size={18} /> Entregado
-                </button>
-                <button
-                  onClick={() => handleMark('no_answer')}
-                  className="flex items-center justify-center gap-2 py-4 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-2xl font-extrabold text-sm"
-                >
-                  <PhoneOff size={18} /> No contesta
-                </button>
-              </div>
-
-              {/* SIGUIENTE */}
-              <button
-                onClick={() => setCurrentIdx((i) => Math.min(i + 1, total - 1))}
-                disabled={currentIdx >= total - 1}
-                className="w-full flex items-center justify-center gap-2 py-4 bg-[#d3121a] hover:bg-[#b00f14] disabled:opacity-40 text-white rounded-2xl font-extrabold text-base shadow-md shadow-red-100 transition-all"
-              >
-                <SkipForward size={20} />
-                SIGUIENTE
-                <ChevronRight size={20} />
-              </button>
-            </div>
-          ) : (
+          {/* Loading state */}
+          {loading && (
             <div className="bg-white border border-[#E7E7EC] rounded-2xl p-12 text-center shadow-sm">
-              <CheckCircle size={48} className="text-emerald-400 mx-auto mb-4" />
-              <h3 className="text-xl font-extrabold text-slate-800">¡Todo procesado!</h3>
-              <p className="text-slate-400 mt-2">No hay pedidos activos pendientes en este momento.</p>
+              <Loader2 size={32} className="text-[#d3121a] animate-spin mx-auto mb-3" />
+              <p className="text-xs font-bold text-slate-400">Cargando pedidos asignados desde Firebase…</p>
             </div>
           )}
 
-          {/* All active orders table */}
-          {routeOrders.length > 0 && (
-            <div className="bg-white border border-[#E7E7EC] rounded-2xl overflow-hidden shadow-sm">
-              <div className="p-4 border-b border-[#E7E7EC]">
-                <h3 className="font-extrabold text-slate-800 text-sm">Todos los pedidos activos</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-[#E7E7EC] text-[10px] font-extrabold text-slate-400 tracking-widest uppercase">
-                      <th className="py-3 px-4">#</th>
-                      <th className="py-3 px-4">Tracking</th>
-                      <th className="py-3 px-4">Cliente</th>
-                      <th className="py-3 px-4">Motorista</th>
-                      <th className="py-3 px-4">Dirección</th>
-                      <th className="py-3 px-4">Estado</th>
-                      <th className="py-3 px-4 text-right">Acción</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#E7E7EC]">
-                    {routeOrders.map((order, idx) => (
-                      <tr
-                        key={order.id}
-                        className={`transition-colors cursor-pointer ${idx === currentIdx ? 'bg-[#fee2e2]/30' : 'hover:bg-slate-50'}`}
-                        onClick={() => setCurrentIdx(idx)}
-                      >
-                        <td className="py-3 px-4 font-extrabold text-[#d3121a]">{idx + 1}</td>
-                        <td className="py-3 px-4 font-mono font-bold text-slate-600">{order.trackingId}</td>
-                        <td className="py-3 px-4 font-bold text-slate-700">{order.customer.name}</td>
-                        <td className="py-3 px-4 text-slate-500">{order.courierName}</td>
-                        <td className="py-3 px-4 text-slate-500 max-w-xs truncate">{order.deliveryAddress.fullAddress}</td>
-                        <td className="py-3 px-4">
-                          <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
-                            order.status === 'delivered' ? 'bg-emerald-50 text-emerald-700' :
-                            order.status === 'no_answer' ? 'bg-red-50 text-red-700' :
-                            'bg-blue-50 text-blue-700'
-                          }`}>
-                            {STATUS_LABEL[order.status]}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <button className="text-[10px] font-bold text-[#d3121a] hover:underline">
-                            Seleccionar
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          {/* Error state */}
+          {!loading && error && (
+            <div className="bg-white border border-red-200 rounded-2xl p-12 text-center shadow-sm space-y-4">
+              <AlertTriangle size={32} className="text-amber-400 mx-auto" />
+              <p className="font-bold text-slate-700">{error}</p>
+              <button onClick={() => window.location.reload()} className="flex items-center gap-2 text-xs font-bold text-[#d3121a] hover:underline mx-auto">
+                <RefreshCw size={14} /> Reintentar
+              </button>
             </div>
+          )}
+
+          {/* No orders state */}
+          {!loading && !error && total === 0 && (
+            <div className="bg-white border border-[#E7E7EC] rounded-2xl p-12 text-center shadow-sm space-y-4">
+              <CheckCircle size={48} className="text-slate-300 mx-auto" />
+              <h3 className="text-lg font-extrabold text-slate-700">No tienes pedidos asignados</h3>
+              <p className="text-xs text-slate-400 max-w-xs mx-auto">
+                Para recibir pedidos en modo repartidor, un administrador debe asignarte pedidos usando tu UID ({adminCourierId?.slice(0, 12)}…) como <code className="bg-slate-100 px-1 rounded">courierId</code>.
+              </p>
+            </div>
+          )}
+
+          {/* Active content */}
+          {!loading && !error && total > 0 && (
+            <>
+              {/* KPIs */}
+              <div className="grid grid-cols-4 gap-4">
+                {[
+                  { label: 'Total activos', value: total, color: 'text-slate-800' },
+                  { label: 'Entregados', value: deliveredToday, color: 'text-emerald-700' },
+                  { label: 'Recaudado', value: `RD$${totalCollected.toLocaleString()}`, color: 'text-[#d3121a]' },
+                  { label: 'No contactados', value: noAnswerCount, color: 'text-red-600' },
+                ].map((kpi) => (
+                  <div key={kpi.label} className="bg-white border border-[#E7E7EC] rounded-2xl p-4 shadow-sm">
+                    <div className={`text-2xl font-extrabold ${kpi.color}`}>{kpi.value}</div>
+                    <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest mt-1">{kpi.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Current order card */}
+              {current && (
+                <div className="space-y-4">
+                  <div className="bg-gradient-to-br from-[#d3121a] to-[#b00f14] rounded-2xl p-6 text-white shadow-lg shadow-red-200">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-xs font-bold uppercase tracking-widest text-red-200">
+                        Pedido actual ({currentIdx + 1}/{total})
+                      </span>
+                      <span className="text-xs font-extrabold bg-white/20 px-3 py-1 rounded-full">
+                        {current.tracking || current.trackingId || current.id}
+                      </span>
+                    </div>
+                    <h2 className="text-xl font-extrabold">
+                      {current.customerName || current.customer?.name || '—'}
+                    </h2>
+                    <div className="flex items-start gap-2 mt-2 mb-3">
+                      <MapPin size={14} className="text-red-200 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-red-100">
+                        {current.formattedAddress || current.street || current.deliveryAddress?.fullAddress || '—'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-xs text-red-200">Tienda:</span>
+                      <span className="text-sm font-bold">{current.storeName || '—'}</span>
+                      <span className="ml-auto text-xl font-extrabold">
+                        RD${(current.collectionAmount || current.financials?.orderCollectionAmount || 0).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <a
+                        href={`tel:${current.customerPhone || current.customer?.phone || ''}`}
+                        className="flex items-center justify-center gap-2 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-sm font-bold text-white"
+                      >
+                        <Phone size={15} /> Llamar
+                      </a>
+                      <WhatsAppContactButton
+                        orderId={current.id}
+                        phone={current.customerPhone || current.customer?.phone || ''}
+                        customerName={current.customerName || current.customer?.name || ''}
+                        storeName={current.storeName || ''}
+                        tracking={current.tracking || current.trackingId || current.id}
+                        courierId={adminCourierId || ''}
+                        className="flex items-center justify-center gap-2 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-sm font-bold text-white w-full"
+                        label="WhatsApp"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => handleMark('delivered')}
+                      disabled={actionLoading}
+                      className="flex items-center justify-center gap-2 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-extrabold text-sm shadow-md shadow-emerald-100 transition-all disabled:opacity-50"
+                    >
+                      {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={18} />}
+                      Entregado
+                    </button>
+                    <button
+                      onClick={() => handleMark('customer_unreachable')}
+                      disabled={actionLoading}
+                      className="flex items-center justify-center gap-2 py-4 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-2xl font-extrabold text-sm disabled:opacity-50"
+                    >
+                      <PhoneOff size={18} /> No contesta
+                    </button>
+                  </div>
+
+                  {/* Next button */}
+                  <button
+                    onClick={() => setCurrentIdx((i) => Math.min(i + 1, total - 1))}
+                    disabled={currentIdx >= total - 1}
+                    className="w-full flex items-center justify-center gap-2 py-4 bg-[#d3121a] hover:bg-[#b00f14] disabled:opacity-40 text-white rounded-2xl font-extrabold text-base shadow-md shadow-red-100 transition-all"
+                  >
+                    <SkipForward size={20} /> SIGUIENTE <ChevronRight size={20} />
+                  </button>
+                </div>
+              )}
+
+              {/* Orders table */}
+              <div className="bg-white border border-[#E7E7EC] rounded-2xl overflow-hidden shadow-sm">
+                <div className="p-4 border-b border-[#E7E7EC]">
+                  <h3 className="font-extrabold text-slate-800 text-sm">
+                    Pedidos asignados en curso ({total})
+                  </h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-[#E7E7EC] text-[10px] font-extrabold text-slate-400 tracking-widest uppercase">
+                        <th className="py-3 px-4">#</th>
+                        <th className="py-3 px-4">Tracking</th>
+                        <th className="py-3 px-4">Cliente</th>
+                        <th className="py-3 px-4">Tienda</th>
+                        <th className="py-3 px-4">Dirección</th>
+                        <th className="py-3 px-4">Estado</th>
+                        <th className="py-3 px-4 text-right">Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E7E7EC]">
+                      {routeOrders.map((order: any, idx: number) => (
+                        <tr
+                          key={order.id}
+                          className={`transition-colors cursor-pointer ${idx === currentIdx ? 'bg-[#fee2e2]/30' : 'hover:bg-slate-50'}`}
+                          onClick={() => setCurrentIdx(idx)}
+                        >
+                          <td className="py-3 px-4 font-extrabold text-[#d3121a]">{idx + 1}</td>
+                          <td className="py-3 px-4 font-mono font-bold text-slate-600">
+                            {order.tracking || order.trackingId || order.id.slice(0, 8)}
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-700">
+                            {order.customerName || order.customer?.name || '—'}
+                          </td>
+                          <td className="py-3 px-4 text-slate-500">{order.storeName || '—'}</td>
+                          <td className="py-3 px-4 text-slate-500 max-w-xs truncate">
+                            {order.formattedAddress || order.street || order.deliveryAddress?.fullAddress || '—'}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
+                              order.status === 'delivered' ? 'bg-emerald-50 text-emerald-700' :
+                              order.status === 'customer_unreachable' ? 'bg-red-50 text-red-700' :
+                              'bg-blue-50 text-blue-700'
+                            }`}>
+                              {STATUS_LABEL[order.status] || order.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button className="text-[10px] font-bold text-[#d3121a] hover:underline">
+                              Seleccionar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </main>

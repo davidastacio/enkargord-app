@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   Navigation,
   MapPin,
@@ -13,15 +15,24 @@ import {
   ArrowUp,
   SkipForward,
   Clock,
+  AlertTriangle,
+  Play
 } from 'lucide-react';
-import { DEFAULT_ORDERS, type CourierOrder, type OrderStatus, buildWhatsAppUrl, DEFAULT_WHATSAPP_TEMPLATES } from '@/data/courier';
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, addDoc, setDoc, getDocs, limit } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useCourierTracking } from '@/hooks/useCourierTracking';
+import { type OrderStatus } from '@/data/courier';
+import WhatsAppContactButton from '@/components/WhatsAppContactButton';
 
-const STATUS_BADGE: Record<OrderStatus, { label: string; color: string; bg: string }> = {
+const STATUS_BADGE: Record<OrderStatus | string, { label: string; color: string; bg: string }> = {
+  pending:           { label: 'Pendiente',        color: 'text-slate-700',   bg: 'bg-slate-100' },
   assigned:          { label: 'Asignado',         color: 'text-slate-700',   bg: 'bg-slate-100' },
   picked_up:         { label: 'Recogido',          color: 'text-blue-700',    bg: 'bg-blue-50' },
-  on_route:          { label: 'En ruta',           color: 'text-blue-700',    bg: 'bg-blue-50' },
+  in_transit:        { label: 'En ruta',           color: 'text-blue-700',    bg: 'bg-blue-50' },
   next_delivery:     { label: 'Próximo',           color: 'text-violet-700',  bg: 'bg-violet-50' },
   no_answer:         { label: 'No contesta',       color: 'text-red-700',     bg: 'bg-red-50' },
+  customer_unreachable: { label: 'No contesta',    color: 'text-red-700',     bg: 'bg-red-50' },
   rescheduled:       { label: 'Reprogramado',      color: 'text-amber-700',   bg: 'bg-amber-50' },
   delivered:         { label: 'Entregado',         color: 'text-emerald-700', bg: 'bg-emerald-50' },
   failed_delivery:   { label: 'Fallido',           color: 'text-red-700',     bg: 'bg-red-50' },
@@ -31,100 +42,268 @@ const STATUS_BADGE: Record<OrderStatus, { label: string; color: string; bg: stri
 };
 
 export default function RutaPage() {
-  const [orders, setOrders] = useState<CourierOrder[]>([]);
-  const [currentIdx, setCurrentIdx] = useState(0);
+  const router = useRouter();
+  const { profile } = useAuth() as any;
+  const { trackingStatus, lastLocation } = useCourierTracking();
+
+  const [orders, setOrders] = useState<any[]>([]);
+  const [route, setRoute] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Operational dialog triggers
   const [showConfirm, setShowConfirm] = useState(false);
-  const [actionType, setActionType] = useState<'delivered' | 'no_answer' | null>(null);
+  const [actionType, setActionType] = useState<'delivered' | 'customer_unreachable' | null>(null);
+  
+  // Custom alerts
   const [toast, setToast] = useState<string | null>(null);
+  const [errorAlert, setErrorAlert] = useState<string | null>(null);
 
-  useEffect(() => {
-    const stored = localStorage.getItem('enkargord_courier_orders');
-    const loaded = stored ? JSON.parse(stored) : DEFAULT_ORDERS;
-    setOrders(loaded);
-  }, []);
-
-  const saveOrders = (updated: CourierOrder[]) => {
-    setOrders(updated);
-    localStorage.setItem('enkargord_courier_orders', JSON.stringify(updated));
-  };
+  // Delivered inputs
+  const [receiverName, setReceiverName] = useState('');
+  const [collectedAmount, setCollectedAmount] = useState('');
 
   const triggerToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
   };
 
-  const routeOrders = orders
-    .filter((o) => o.courierId === 'COU-001' && !['delivered', 'settled', 'returned'].includes(o.status))
-    .sort((a, b) => (a.routeOrder ?? 99) - (b.routeOrder ?? 99));
+  // 1. Fetch courier orders and active route
+  useEffect(() => {
+    if (!profile?.courierId) return;
 
-  const current = routeOrders[currentIdx];
-  const total = routeOrders.length;
-
-  const moveUp = (idx: number) => {
-    if (idx === 0) return;
-    const updated = [...routeOrders];
-    [updated[idx - 1], updated[idx]] = [updated[idx], updated[idx - 1]];
-    const updatedRoute = updated.map((o, i) => ({ ...o, routeOrder: i + 1 }));
-    const final = orders.map((o) => {
-      const found = updatedRoute.find((r) => r.id === o.id);
-      return found ?? o;
-    });
-    saveOrders(final);
-  };
-
-  const moveDown = (idx: number) => {
-    if (idx >= routeOrders.length - 1) return;
-    const updated = [...routeOrders];
-    [updated[idx], updated[idx + 1]] = [updated[idx + 1], updated[idx]];
-    const updatedRoute = updated.map((o, i) => ({ ...o, routeOrder: i + 1 }));
-    const final = orders.map((o) => {
-      const found = updatedRoute.find((r) => r.id === o.id);
-      return found ?? o;
-    });
-    saveOrders(final);
-  };
-
-  const handleNext = (newStatus: 'delivered' | 'no_answer') => {
-    if (!current) return;
-    const updated = orders.map((o) =>
-      o.id === current.id
-        ? { ...o, status: newStatus as OrderStatus, ...(newStatus === 'delivered' ? { deliveredAt: new Date().toISOString(), amountCollected: o.financials.orderCollectionAmount } : {}) }
-        : o
+    // Load active orders assigned to the courier
+    const qOrders = query(
+      collection(db, 'orders'),
+      where('courierId', '==', profile.courierId)
     );
-    saveOrders(updated);
-    setShowConfirm(false);
-    setActionType(null);
-    if (currentIdx >= routeOrders.length - 1) {
-      setCurrentIdx(0);
+
+    const unsubscribeOrders = onSnapshot(qOrders, (snapshot) => {
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setOrders(list);
+    });
+
+    // Load active route
+    const qRoute = query(
+      collection(db, 'courier_routes'),
+      where('courierId', '==', profile.courierId),
+      where('status', '==', 'active'),
+      limit(1)
+    );
+
+    const unsubscribeRoute = onSnapshot(qRoute, async (snapshot) => {
+      if (!snapshot.empty) {
+        const routeDoc = snapshot.docs[0];
+        setRoute({ id: routeDoc.id, ...routeDoc.data() });
+      } else {
+        // No active route, initialize one automatically if they have assigned orders
+        await initializeNewRoute();
+      }
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribeOrders();
+      unsubscribeRoute();
+    };
+  }, [profile]);
+
+  // Helper to initialize a new route in Firestore
+  const initializeNewRoute = async () => {
+    if (!profile?.courierId || orders.length === 0) return;
+
+    const activeOrders = orders
+      .filter(o => ['assigned', 'picked_up', 'in_transit', 'customer_unreachable'].includes(o.status))
+      .map(o => o.id);
+
+    if (activeOrders.length === 0) return;
+
+    try {
+      const routeId = `RTE-${Date.now()}`;
+      const firstOrder = orders.find(o => o.id === activeOrders[0]);
+      
+      const newRoute = {
+        id: routeId,
+        courierId: profile.courierId,
+        courierUid: profile.uid,
+        orderIds: activeOrders,
+        currentOrderId: activeOrders[0],
+        nextOrderId: activeOrders[1] || null,
+        currentProvinceName: firstOrder?.provinceName || '',
+        currentMunicipalityName: firstOrder?.municipalityName || '',
+        currentSectorName: firstOrder?.sectorName || '',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, 'courier_routes', routeId), newRoute);
+
+      // Log event
+      await addDoc(collection(db, 'courier_routes', routeId, 'events'), {
+        type: 'route_started',
+        note: 'Ruta de entregas iniciada automáticamente',
+        createdAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Error creating active route:", e);
     }
-    triggerToast(newStatus === 'delivered' ? `✅ ${current.customer.name} — entrega confirmada` : `📵 ${current.customer.name} — registrado como no contesta`);
   };
 
-  if (!current) {
+  // Filter orders related to active route
+  const activeRouteOrders: any[] = route
+    ? route.orderIds.map((id: string) => orders.find((o: any) => o.id === id)).filter(Boolean)
+    : [];
+
+  const currentIdx = route && route.currentOrderId 
+    ? route.orderIds.indexOf(route.currentOrderId) 
+    : 0;
+
+  const currentOrder = activeRouteOrders.find(o => o.id === route?.currentOrderId) || activeRouteOrders[0];
+  const total = activeRouteOrders.length;
+
+  const handleActionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentOrder || !actionType || !route) return;
+
+    try {
+      const nowStr = new Date().toISOString();
+      const expectedAmount = currentOrder.collectionAmount || 0;
+      const actual = actionType === 'delivered' ? (parseFloat(collectedAmount) || 0) : 0;
+
+      // Update Order Status in Firestore
+      await updateDoc(doc(db, 'orders', currentOrder.id), {
+        status: actionType,
+        updatedAt: nowStr,
+        ...(actionType === 'delivered' ? {
+          deliveredAt: nowStr,
+          deliveredByUid: profile?.uid,
+          collectedAmount: actual,
+          receiverName: receiverName || 'Cliente'
+        } : {
+          lastContactAttemptAt: nowStr
+        })
+      });
+
+      // Log Order Event
+      await addDoc(collection(db, 'orders', currentOrder.id, 'events'), {
+        type: `status_updated_to_${actionType}`,
+        previousStatus: currentOrder.status,
+        newStatus: actionType,
+        actorUid: profile?.uid,
+        actorRole: 'courier',
+        note: actionType === 'delivered'
+          ? `Entregado a: ${receiverName || 'Cliente'}. RD$${actual} cobrado.`
+          : 'Cliente no contesta',
+        createdAt: nowStr
+      });
+
+      // Update courier counters if delivered
+      if (actionType === 'delivered') {
+        const { increment } = require('firebase/firestore');
+        await updateDoc(doc(db, 'couriers', profile.courierId), {
+          completedOrderCount: increment(1),
+          currentOrderCount: increment(-1),
+          updatedAt: nowStr
+        });
+      }
+
+      setShowConfirm(false);
+      setReceiverName('');
+      setCollectedAmount('');
+      triggerToast(actionType === 'delivered' ? `✅ Entrega confirmada` : `📵 Reportado: Cliente no contesta`);
+    } catch (e) {
+      console.error(e);
+      alert('Error al actualizar el estado de la entrega.');
+    }
+  };
+
+  // Advanced to Next order on route
+  const handleAdvanceRoute = async () => {
+    if (!route || !currentOrder) return;
+
+    // 1. Check if current order is resolved
+    const isResolved = ['delivered', 'no_answer', 'customer_unreachable', 'failed', 'cancelled'].includes(currentOrder.status);
+    if (!isResolved) {
+      setErrorAlert("Debes completar o reportar el pedido actual antes de continuar.");
+      setTimeout(() => setErrorAlert(null), 4000);
+      return;
+    }
+
+    // Find next unresolved order in route orderIds
+    const nextIdx = route.orderIds.indexOf(currentOrder.id) + 1;
+    const nextId = route.orderIds[nextIdx] || null;
+    const nextOrder = nextId ? orders.find(o => o.id === nextId) : null;
+
+    try {
+      const nowStr = new Date().toISOString();
+      const payload: Record<string, any> = {
+        currentOrderId: nextId,
+        nextOrderId: route.orderIds[nextIdx + 1] || null,
+        currentProvinceName: nextOrder?.provinceName || '',
+        currentMunicipalityName: nextOrder?.municipalityName || '',
+        currentSectorName: nextOrder?.sectorName || '',
+        updatedAt: nowStr
+      };
+
+      if (!nextId) {
+        payload.status = 'completed';
+        payload.completedAt = nowStr;
+      }
+
+      await updateDoc(doc(db, 'courier_routes', route.id), payload);
+
+      // Log Route event
+      await addDoc(collection(db, 'courier_routes', route.id, 'events'), {
+        type: nextId ? 'route_step_advanced' : 'route_completed',
+        note: nextId ? `Avanzó al pedido: ${nextId}` : 'Ruta completada totalmente',
+        createdAt: nowStr
+      });
+
+      triggerToast(nextId ? "Avanzando al siguiente destino..." : "🎉 ¡Ruta de entregas completada!");
+    } catch (e) {
+      console.error("Error advancing route step:", e);
+    }
+  };
+
+  if (loading) {
     return (
-      <div className="max-w-lg mx-auto text-center py-16">
-        <CheckCircle size={56} className="text-emerald-400 mx-auto mb-4" />
-        <h2 className="text-xl font-extrabold text-slate-800">¡Ruta completada!</h2>
-        <p className="text-slate-400 mt-2">Todos los pedidos han sido procesados.</p>
+      <div className="max-w-lg mx-auto text-center py-20">
+        <div className="w-10 h-10 border-4 border-[#d3121a] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Cargando ruta...</h2>
       </div>
     );
   }
 
-  const st = STATUS_BADGE[current.status];
-  const waUrl = buildWhatsAppUrl(
-    current.customer.phone,
-    DEFAULT_WHATSAPP_TEMPLATES[0].template,
-    { motorista: 'Carlos Martínez', tienda: current.storeName, tracking: current.trackingId }
-  );
+  if (activeRouteOrders.length === 0 || !route || route.status === 'completed' || !currentOrder) {
+    return (
+      <div className="max-w-lg mx-auto text-center py-16 px-4">
+        <CheckCircle size={56} className="text-emerald-500 mx-auto mb-4" />
+        <h2 className="text-xl font-extrabold text-slate-800">¡Ruta completada!</h2>
+        <p className="text-slate-400 mt-2">No tienes entregas activas pendientes de asignación en tu ruta.</p>
+        <Link href="/motorista" className="mt-6 inline-block py-3 px-6 bg-[#d3121a] text-white rounded-xl font-bold text-xs">
+          Ir al Inicio
+        </Link>
+      </div>
+    );
+  }
+
+  const progressPct = total > 0 ? Math.round((currentIdx / total) * 100) : 0;
 
   return (
-    <div className="space-y-5 max-w-2xl mx-auto lg:max-w-full">
+    <div className="space-y-5 max-w-md mx-auto pb-10">
 
-      {/* Toast */}
+      {/* Dynamic Alerts */}
       {toast && (
-        <div className="fixed bottom-20 left-4 right-4 lg:left-auto lg:right-6 lg:w-96 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 animate-slide-in">
-          <div className="w-2 h-2 bg-emerald-500 rounded-full" />
-          <span className="text-sm font-medium">{toast}</span>
+        <div className="fixed bottom-20 left-4 right-4 z-50 bg-slate-950/95 backdrop-blur text-white px-4 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-slide-in">
+          <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse" />
+          <span className="text-xs font-bold">{toast}</span>
+        </div>
+      )}
+
+      {errorAlert && (
+        <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-2xl text-xs font-bold flex items-center gap-2">
+          <AlertTriangle size={16} className="text-red-500 flex-shrink-0" />
+          <span>{errorAlert}</span>
         </div>
       )}
 
@@ -137,56 +316,59 @@ export default function RutaPage() {
           </p>
         </div>
         <div className="text-right">
-          <div className="text-2xl font-extrabold text-[#d3121a]">{Math.round(((currentIdx) / total) * 100)}%</div>
-          <div className="text-[10px] text-slate-400 font-semibold">completado</div>
+          <div className="text-2xl font-extrabold text-[#d3121a]">{progressPct}%</div>
+          <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Progreso</div>
         </div>
       </div>
 
-      {/* Progress */}
-      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+      {/* Progress Bar */}
+      <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
         <div
           className="h-full bg-gradient-to-r from-[#d3121a] to-[#ff4757] rounded-full transition-all duration-700"
-          style={{ width: `${(currentIdx / total) * 100}%` }}
+          style={{ width: `${progressPct}%` }}
         />
       </div>
 
       {/* Current Delivery Card */}
-      <div className="bg-gradient-to-br from-[#d3121a] to-[#b00f14] rounded-2xl p-5 text-white shadow-lg shadow-red-200">
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-xs font-bold uppercase tracking-widest text-red-200">Entrega actual</span>
-          <span className="text-xs font-extrabold bg-white/20 px-2.5 py-1 rounded-full">{current.trackingId}</span>
+      <div className="bg-gradient-to-br from-[#d3121a] to-[#b00f14] rounded-2xl p-5 text-white shadow-lg shadow-red-200 space-y-4">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-black uppercase tracking-widest text-red-200 bg-white/10 px-2.5 py-1 rounded-full">
+            📍 Destino actual
+          </span>
+          <span className="text-xs font-black bg-white/20 px-2.5 py-1 rounded-full font-mono">{currentOrder.tracking || currentOrder.id}</span>
         </div>
 
-        <h3 className="text-lg font-extrabold mb-1">{current.customer.name}</h3>
-        <div className="flex items-start gap-2 mb-3">
-          <MapPin size={14} className="text-red-200 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-red-100">{current.deliveryAddress.fullAddress}</p>
+        <div>
+          <h3 className="text-lg font-black mb-1">{currentOrder.customerName}</h3>
+          <div className="flex items-start gap-1.5 opacity-90 text-sm">
+            <MapPin size={14} className="text-red-200 flex-shrink-0 mt-0.5" />
+            <p className="font-semibold">{currentOrder.formattedAddress || currentOrder.street}</p>
+          </div>
+          <span className="text-[10px] font-bold text-red-200 block mt-1 uppercase tracking-wider">
+            {currentOrder.sectorName}, {currentOrder.municipalityName}
+          </span>
         </div>
-        {current.deliveryAddress.reference && (
-          <p className="text-xs text-red-200 mb-3">📍 {current.deliveryAddress.reference}</p>
-        )}
 
-        <div className="flex items-center gap-3">
-          <div className="text-2xl font-extrabold">RD${current.financials.orderCollectionAmount.toLocaleString()}</div>
-          <div className="text-xs text-red-200">a recaudar</div>
+        <div className="flex items-center gap-2 pt-2">
+          <span className="text-2xl font-extrabold">RD${(currentOrder.collectionAmount || 0).toLocaleString()}</span>
+          <span className="text-[10px] font-bold text-red-200 uppercase tracking-widest">recaudo contra entrega</span>
         </div>
 
         {/* Quick contact */}
-        <div className="grid grid-cols-2 gap-2 mt-4">
+        <div className="grid grid-cols-2 gap-2 pt-2">
           <a
-            href={`tel:${current.customer.phone}`}
-            className="flex items-center justify-center gap-2 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-sm font-bold text-white transition-all"
+            href={`tel:${currentOrder.customerPhone}`}
+            className="flex items-center justify-center gap-1.5 py-2.5 bg-white/15 hover:bg-white/25 rounded-xl text-xs font-bold text-white transition-all border border-white/10"
           >
-            <Phone size={15} /> Llamar
+            <Phone size={14} /> Llamar
           </a>
-          <a
-            href={waUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center justify-center gap-2 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-sm font-bold text-white transition-all"
-          >
-            <MessageCircle size={15} /> WhatsApp
-          </a>
+          <WhatsAppContactButton
+            phone={currentOrder.customerPhone}
+            orderId={currentOrder.id}
+            storeName={currentOrder.storeName || 'Tienda'}
+            trackingId={currentOrder.tracking || currentOrder.id}
+            templateKey="in_transit"
+          />
         </div>
       </div>
 
@@ -195,101 +377,131 @@ export default function RutaPage() {
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={() => { setActionType('delivered'); setShowConfirm(true); }}
-            className="flex items-center justify-center gap-2 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-extrabold text-sm shadow-md shadow-emerald-100 transition-all active:scale-95"
+            className="flex items-center justify-center gap-2 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-extrabold text-sm shadow-md shadow-emerald-100 transition-all active:scale-95 cursor-pointer"
           >
             <CheckCircle size={18} /> Entregado
           </button>
           <button
-            onClick={() => { setActionType('no_answer'); setShowConfirm(true); }}
-            className="flex items-center justify-center gap-2 py-4 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-2xl font-extrabold text-sm transition-all active:scale-95"
+            onClick={() => { setActionType('customer_unreachable'); setShowConfirm(true); }}
+            className="flex items-center justify-center gap-2 py-4 bg-red-50 hover:bg-red-100 text-[#d3121a] border border-red-200 rounded-2xl font-extrabold text-sm transition-all active:scale-95 cursor-pointer"
           >
             <PhoneOff size={18} /> No contesta
           </button>
         </div>
       ) : (
-        <div className="bg-white border border-[#E7E7EC] rounded-2xl p-5 shadow-sm space-y-3">
-          <p className="text-sm font-bold text-slate-700 text-center">
-            {actionType === 'delivered'
-              ? '¿Confirmar entrega exitosa?'
-              : '¿Confirmar que el cliente no contestó?'}
-          </p>
+        <form onSubmit={handleActionSubmit} className="bg-white border border-[#E7E7EC] rounded-2xl p-5 shadow-sm space-y-4">
+          <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-widest text-center">
+            {actionType === 'delivered' ? '✓ Confirmación de cobro y entrega' : '⚠️ Registrar intento fallido'}
+          </h3>
+
+          {actionType === 'delivered' ? (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                  Nombre de quien recibe
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={receiverName}
+                  onChange={(e) => setReceiverName(e.target.value)}
+                  placeholder="Ej. Hermano, Portero, Vecino..."
+                  className="w-full px-3 py-2.5 text-xs border border-[#E7E7EC] rounded-xl focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                  Monto recaudado (RD$)
+                </label>
+                <input
+                  type="number"
+                  required
+                  value={collectedAmount}
+                  onChange={(e) => setCollectedAmount(e.target.value)}
+                  placeholder={String(currentOrder.collectionAmount || 0)}
+                  className="w-full px-3 py-2.5 text-xs border border-[#E7E7EC] rounded-xl focus:outline-none font-bold"
+                />
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs font-semibold text-slate-500 text-center">
+              ¿Seguro que deseas reportar que el cliente no contesta a las llamadas?
+            </p>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <button
-              onClick={() => handleNext(actionType!)}
-              className={`py-3 rounded-xl font-extrabold text-sm ${
-                actionType === 'delivered'
-                  ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
-                  : 'bg-red-500 hover:bg-red-600 text-white'
+              type="submit"
+              className={`py-3 rounded-xl font-extrabold text-xs text-white cursor-pointer ${
+                actionType === 'delivered' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'
               }`}
             >
-              {actionType === 'delivered' ? '✅ Confirmar' : '📵 Confirmar'}
+              {actionType === 'delivered' ? 'Confirmar entrega' : 'Confirmar no respuesta'}
             </button>
             <button
+              type="button"
               onClick={() => setShowConfirm(false)}
-              className="py-3 rounded-xl font-extrabold text-sm bg-slate-100 hover:bg-slate-200 text-slate-600"
+              className="py-3 rounded-xl font-extrabold text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
             >
               Cancelar
             </button>
           </div>
-        </div>
+        </form>
       )}
 
-      {/* NEXT button */}
+      {/* SIGUIENTE Button */}
       <button
-        onClick={() => setCurrentIdx((i) => Math.min(i + 1, total - 1))}
-        disabled={currentIdx >= total - 1}
-        className="w-full flex items-center justify-center gap-2 py-4 bg-[#d3121a] hover:bg-[#b00f14] disabled:opacity-40 text-white rounded-2xl font-extrabold text-base shadow-md shadow-red-100 transition-all active:scale-95"
+        onClick={handleAdvanceRoute}
+        className="w-full flex items-center justify-center gap-2 py-4 bg-[#d3121a] hover:bg-[#b00f14] disabled:opacity-40 text-white rounded-2xl font-black text-sm shadow-md shadow-red-100 transition-all active:scale-95 cursor-pointer uppercase tracking-wider"
       >
-        <SkipForward size={20} />
-        SIGUIENTE
-        <ChevronRight size={20} />
+        <SkipForward size={16} />
+        Siguiente parada
+        <ChevronRight size={16} />
       </button>
 
-      {/* Route List */}
+      {/* Route List / Order sequence */}
       <div className="bg-white border border-[#E7E7EC] rounded-2xl overflow-hidden shadow-sm">
         <div className="p-4 border-b border-[#E7E7EC]">
-          <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
-            <Navigation size={15} className="text-[#d3121a]" />
-            Orden de ruta
+          <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-widest flex items-center gap-2">
+            <Navigation size={14} className="text-[#d3121a]" />
+            Lista de paradas asignadas
           </h3>
         </div>
         <div className="divide-y divide-[#E7E7EC]">
-          {routeOrders.map((order, idx) => {
-            const badge = STATUS_BADGE[order.status];
-            const isActive = idx === currentIdx;
+          {activeRouteOrders.map((order: any, idx: number) => {
+            const badge = STATUS_BADGE[order.status] || { label: order.status, color: 'text-slate-500', bg: 'bg-slate-100' };
+            const isActive = order.id === currentOrder.id;
             return (
               <div
                 key={order.id}
-                className={`flex items-center gap-3 px-4 py-3 transition-all cursor-pointer ${
-                  isActive ? 'bg-[#fee2e2]/30' : 'hover:bg-slate-50'
+                className={`flex items-center gap-3 px-4 py-3.5 transition-all ${
+                  isActive ? 'bg-[#fee2e2]/30 border-l-4 border-l-[#d3121a]' : 'hover:bg-slate-50'
                 }`}
-                onClick={() => setCurrentIdx(idx)}
               >
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-extrabold flex-shrink-0 ${
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0 ${
                   isActive ? 'bg-[#d3121a] text-white' : 'bg-slate-100 text-slate-600'
                 }`}>
                   {idx + 1}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-bold text-sm text-slate-700 truncate">{order.customer.name}</div>
-                  <div className="text-[10px] text-slate-400 truncate">{order.deliveryAddress.sectorName ?? order.deliveryAddress.municipalityName}</div>
+                  <div className="font-bold text-xs text-slate-700 truncate">{order.customerName}</div>
+                  <div className="text-[10px] text-slate-400 truncate">{order.sectorName || order.municipalityName}</div>
                 </div>
-                <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full flex-shrink-0 ${badge.bg} ${badge.color}`}>
+                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full flex-shrink-0 ${badge.bg} ${badge.color}`}>
                   {badge.label}
                 </span>
-                <div className="flex flex-col gap-0.5 flex-shrink-0">
-                  <button onClick={(e) => { e.stopPropagation(); moveUp(idx); }} className="p-0.5 text-slate-300 hover:text-slate-600 transition-colors">
-                    <ArrowUp size={12} />
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); moveDown(idx); }} className="p-0.5 text-slate-300 hover:text-slate-600 transition-colors">
-                    <ArrowDown size={12} />
-                  </button>
-                </div>
+                <Link
+                  href={`/motorista/pedidos/${order.id}`}
+                  className="text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  Detalle →
+                </Link>
               </div>
             );
           })}
         </div>
       </div>
+
     </div>
   );
 }

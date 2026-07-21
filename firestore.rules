@@ -2,8 +2,41 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Helper checks
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'admin';
+    }
+
+    function isCourier() {
+      return isAuthenticated() && getUserData().role == 'courier';
+    }
+
+    // Default catch-all rules for authenticated users
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAuthenticated();
+    }
+
+    // Courier Locations rules
+    match /courier_locations/{locationId} {
+      allow create: if isCourier() && request.resource.data.courierUid == request.auth.uid;
+      allow read: if isAdmin() || isAuthenticated(); // Allows authenticated stores to fetch active courier locations
+      allow update, delete: if isAdmin();
+    }
+
+    // Courier Routes rules
+    match /courier_routes/{routeId} {
+      allow create, update: if isCourier() && request.resource.data.courierUid == request.auth.uid;
+      allow read: if isAdmin() || isCourier() || isAuthenticated();
+      allow delete: if isAdmin();
     }
   }
 }
