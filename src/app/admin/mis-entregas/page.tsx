@@ -175,15 +175,28 @@ export default function MisEntregasPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
+  const [diagCode, setDiagCode] = useState<string | null>(null);
+
   // ── Activate Operative Profile (Server-side API endpoint call) ─────────────
   const handleActivateProfile = async () => {
     if (!authUser) return;
+    
+    const flowId = `ACT-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    setDiagCode(flowId);
+    const t0 = performance.now();
+    
+    console.log(`[Diagnostic] flowId=${flowId} etapa=activation-start timestamp=${new Date().toISOString()}`);
     setActivatingProfile(true);
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('TIMEOUT_EXCEEDED')), 10000)
+    );
+
     try {
-      console.log(`[Repartidor Debug] Solicitando activación de perfil a /api/admin/courier-profile/activate para UID: ${adminUid}`);
-      
       const idToken = await authUser.getIdToken();
-      const res = await fetch('/api/admin/courier-profile/activate', {
+      console.log(`[Diagnostic] flowId=${flowId} etapa=courier-create-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+      
+      const fetchPromise = fetch('/api/admin/courier-profile/activate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -191,27 +204,34 @@ export default function MisEntregasPage() {
         },
       });
 
+      const res = await Promise.race([fetchPromise, timeoutPromise]) as Response;
+
       const contentType = res.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
         const rawText = await res.text();
-        console.error('[Repartidor Debug] activate-profile Non-JSON response:', {
-          status: res.status,
-          preview: rawText.slice(0, 150),
-        });
+        console.error(`[Diagnostic] flowId=${flowId} etapa=endpoint-error status=${res.status} preview=${rawText.slice(0, 80)}`);
         throw new Error('Hubo un error interno al activar el perfil. Inténtalo nuevamente.');
       }
 
       const data = await res.json();
 
       if (res.ok && data.success) {
+        console.log(`[Diagnostic] flowId=${flowId} etapa=activation-completed elapsed=${(performance.now() - t0).toFixed(0)}ms`);
         setHasOperativeProfile(true);
         triggerToast("✅ Perfil operativo activado correctamente.");
       } else {
+        console.error(`[Diagnostic] flowId=${flowId} etapa=endpoint-error error=${data.error || 'unknown'} msg=${data.message}`);
         alert(`No se pudo activar el perfil operativo: ${data.message || data.error || 'Error desconocido'}`);
       }
     } catch (err: any) {
-      console.error("[Repartidor Debug] Error llamando endpoint de activación:", err);
-      alert(err.message || 'Ocurrió un error al contactar al servidor.');
+      const duration = (performance.now() - t0).toFixed(0);
+      console.error(`[Diagnostic] flowId=${flowId} etapa=endpoint-error elapsed=${duration}ms msg=${err.message || String(err)}`);
+      
+      if (err.message === 'TIMEOUT_EXCEEDED') {
+        alert('La activación del perfil superó el límite de tiempo de 10 segundos. Inténtalo de nuevo.');
+      } else {
+        alert(err.message || 'Ocurrió un error al contactar al servidor.');
+      }
     } finally {
       setActivatingProfile(false);
     }
@@ -389,6 +409,12 @@ export default function MisEntregasPage() {
                 {activatingProfile ? <Loader2 size={15} className="animate-spin" /> : <PlusCircle size={15} />}
                 Activar perfil de repartidor
               </button>
+              
+              {diagCode && (
+                <div className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest bg-slate-50 border border-[#E7E7EC] py-2 max-w-xs mx-auto rounded-xl">
+                  Código de diagnóstico: {diagCode}
+                </div>
+              )}
             </div>
           )}
 

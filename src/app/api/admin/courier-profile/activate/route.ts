@@ -5,16 +5,13 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
-  console.log('[API Debug] [activation-request-received] Iniciando POST /api/admin/courier-profile/activate.');
+  const flowId = `ACT-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+  const t0 = performance.now();
+  console.log(`[Diagnostic] flowId=${flowId} etapa=activation-start timestamp=${new Date().toISOString()}`);
 
-  // Safe Env Logging
-  console.log('[API Debug] [firebase-admin-env]', {
-    hasProjectId: Boolean(process.env.FIREBASE_ADMIN_PROJECT_ID),
-    hasClientEmail: Boolean(process.env.FIREBASE_ADMIN_CLIENT_EMAIL),
-    hasPrivateKey: Boolean(process.env.FIREBASE_ADMIN_PRIVATE_KEY),
-    privateKeyHasHeader:
-      process.env.FIREBASE_ADMIN_PRIVATE_KEY?.includes('BEGIN PRIVATE KEY') ?? false,
-  });
+  // Create a timeout controller to interrupt operations taking > 10 seconds
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
 
   try {
     // 1. Initialise Admin services on-demand inside try block
@@ -24,7 +21,8 @@ export async function POST(request: Request) {
       adminAuth = getAdminAuth();
       adminDb = getAdminDb();
     } catch (initErr: any) {
-      console.error('[API Debug] [SERVER_INIT_ERROR] Error al inicializar Firebase Admin App:', initErr);
+      clearTimeout(timeoutId);
+      console.error(`[Diagnostic] flowId=${flowId} etapa=endpoint-error elapsed=${(performance.now() - t0).toFixed(0)}ms error=SERVER_INIT_ERROR msg=${initErr?.message}`);
       return NextResponse.json(
         {
           success: false,
@@ -35,10 +33,13 @@ export async function POST(request: Request) {
       );
     }
 
+    console.log(`[Diagnostic] flowId=${flowId} etapa=session-verify-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+
     // 2. Parse Bearer Token
     const authHeader = request.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.error('[API Debug] [UNAUTHORIZED] Cabecera de autorización ausente o inválida.');
+      clearTimeout(timeoutId);
+      console.error(`[Diagnostic] flowId=${flowId} etapa=endpoint-error error=UNAUTHORIZED msg=Missing authorization header`);
       return NextResponse.json(
         {
           success: false,
@@ -53,9 +54,11 @@ export async function POST(request: Request) {
     let decodedToken;
     try {
       decodedToken = await adminAuth.verifyIdToken(idToken);
-      console.log(`[API Debug] [session-verified] Sesión verificada para UID: ${decodedToken.uid}`);
+      const partialUid = decodedToken.uid ? `${decodedToken.uid.slice(0, 5)}...` : 'N/A';
+      console.log(`[Diagnostic] flowId=${flowId} etapa=session-verify-success uid=${partialUid} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
     } catch (authErr: any) {
-      console.error('[API Debug] [TOKEN_VERIFICATION_FAILED] Error verificando ID token:', authErr.message);
+      clearTimeout(timeoutId);
+      console.error(`[Diagnostic] flowId=${flowId} etapa=endpoint-error error=TOKEN_VERIFICATION_FAILED msg=${authErr?.message}`);
       return NextResponse.json(
         {
           success: false,
@@ -67,13 +70,15 @@ export async function POST(request: Request) {
     }
 
     const uid = decodedToken.uid;
+    console.log(`[Diagnostic] flowId=${flowId} etapa=admin-user-read-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
 
     // 3. Get user role from users collection
     const userDocRef = adminDb.collection('users').doc(uid);
     const userSnap = await userDocRef.get();
 
     if (!userSnap.exists) {
-      console.error(`[API Debug] [USER_NOT_FOUND] No existe registro en users/${uid}`);
+      clearTimeout(timeoutId);
+      console.warn(`[Diagnostic] flowId=${flowId} etapa=admin-user-read-failed error=USER_NOT_FOUND elapsed=${(performance.now() - t0).toFixed(0)}ms`);
       return NextResponse.json(
         {
           success: false,
@@ -86,10 +91,13 @@ export async function POST(request: Request) {
 
     const userData = userSnap.data();
     const userRole = userData?.role;
-
     const isAdmin = userRole === 'admin' || userRole === 'Admin' || userRole === 'Administrador';
+
+    console.log(`[Diagnostic] flowId=${flowId} etapa=admin-user-read-success role=${userRole} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+
     if (!isAdmin) {
-      console.error(`[API Debug] [FORBIDDEN] El usuario ${uid} tiene rol ${userRole} (No es administrador).`);
+      clearTimeout(timeoutId);
+      console.warn(`[Diagnostic] flowId=${flowId} etapa=admin-user-read-failed error=FORBIDDEN elapsed=${(performance.now() - t0).toFixed(0)}ms`);
       return NextResponse.json(
         {
           success: false,
@@ -100,15 +108,16 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log(`[API Debug] [admin-role-verified] Usuario ${uid} verificado como Admin legítimo.`);
+    console.log(`[Diagnostic] flowId=${flowId} etapa=courier-query-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
 
     // 4. Check existing profile
     const courierDocRef = adminDb.collection('couriers').doc(uid);
     const courierSnap = await courierDocRef.get();
 
     if (courierSnap.exists) {
+      clearTimeout(timeoutId);
       const existingData = courierSnap.data();
-      console.log(`[API Debug] [existing-profile-checked] El perfil operativo couriers/${uid} ya existe.`);
+      console.log(`[Diagnostic] flowId=${flowId} etapa=courier-query-success exists=true elapsed=${(performance.now() - t0).toFixed(0)}ms`);
       
       // Ensure users document is synced just in case
       if (!userData?.courierId || !userData?.courierModeEnabled) {
@@ -119,6 +128,7 @@ export async function POST(request: Request) {
         });
       }
 
+      console.log(`[Diagnostic] flowId=${flowId} etapa=activation-completed elapsed=${(performance.now() - t0).toFixed(0)}ms`);
       return NextResponse.json({
         success: true,
         alreadyExisted: true,
@@ -131,6 +141,8 @@ export async function POST(request: Request) {
         }
       });
     }
+
+    console.log(`[Diagnostic] flowId=${flowId} etapa=courier-create-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
 
     // 5. Create new operative profile safely
     const nowIso = new Date().toISOString();
@@ -156,7 +168,9 @@ export async function POST(request: Request) {
     };
 
     await courierDocRef.set(newCourierProfile);
-    console.log(`[API Debug] [courier-profile-created] Perfil operativo couriers/${uid} guardado.`);
+    console.log(`[Diagnostic] flowId=${flowId} etapa=courier-create-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+
+    console.log(`[Diagnostic] flowId=${flowId} etapa=user-update-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
 
     // 6. Update user document
     await userDocRef.update({
@@ -164,7 +178,7 @@ export async function POST(request: Request) {
       courierModeEnabled: true,
       updatedAt: nowIso,
     });
-    console.log(`[API Debug] [user-profile-updated] users/${uid} actualizado con courierId y courierModeEnabled.`);
+    console.log(`[Diagnostic] flowId=${flowId} etapa=user-update-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
 
     // 7. Audit log
     const auditId = `AUD-${Date.now()}`;
@@ -179,7 +193,8 @@ export async function POST(request: Request) {
       createdAt: nowIso,
     });
 
-    console.log(`[API Debug] [activation-completed] Activación finalizada con éxito.`);
+    clearTimeout(timeoutId);
+    console.log(`[Diagnostic] flowId=${flowId} etapa=activation-completed elapsed=${(performance.now() - t0).toFixed(0)}ms`);
 
     return NextResponse.json({
       success: true,
@@ -194,11 +209,8 @@ export async function POST(request: Request) {
     });
 
   } catch (error: any) {
-    console.error('[API Debug] [activation-error]', {
-      name: error instanceof Error ? error.name : 'UnknownError',
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
+    clearTimeout(timeoutId);
+    console.error(`[Diagnostic] flowId=${flowId} etapa=endpoint-error elapsed=${(performance.now() - t0).toFixed(0)}ms error=INTERNAL_ERROR msg=${error?.message}`);
 
     return NextResponse.json(
       {

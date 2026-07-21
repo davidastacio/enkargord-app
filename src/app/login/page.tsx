@@ -9,6 +9,7 @@ import { Mail, HelpCircle } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import type { UserProfile } from '@/providers/AuthProvider';
 
 import AuthHeader from '@/components/auth/AuthHeader';
 import AuthVisual from '@/components/auth/AuthVisual';
@@ -30,6 +31,8 @@ export default function LoginPage() {
   const [identifierError, setIdentifierError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
+  const [diagFlowId, setDiagFlowId] = useState<string | null>(null);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -49,34 +52,50 @@ export default function LoginPage() {
 
     if (hasError) return;
 
+    // Telemetry Init
+    const flowId = `LOG-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    setDiagFlowId(flowId);
+    const t0 = performance.now();
+    
+    console.log(`[Diagnostic] flowId=${flowId} etapa=login-submit-start timestamp=${new Date().toISOString()}`);
     setIsLoading(true);
+
+    // Timeout check (10 seconds)
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('TIMEOUT_EXCEEDED')), 10000)
+    );
 
     try {
       let emailToAuth = identifier.trim();
 
-      // If it looks like a phone number (digits, dashes, parens), resolve it to email
+      // If it looks like a phone number, resolve it to email
       const isPhonePattern = /^[0-9\-()+ ]+$/.test(emailToAuth) && emailToAuth.replace(/\D/g, '').length >= 7;
       if (isPhonePattern) {
         const cleanedPhone = emailToAuth.replace(/\D/g, '');
-        // Search user profile by phone in Firestore
         const q = query(collection(db, 'users'), where('phone', '==', cleanedPhone));
-        const querySnapshot = await getDocs(q);
+        const querySnapshot = await Promise.race([getDocs(q), timeoutPromise]) as any;
         if (!querySnapshot.empty) {
-          const userDoc = querySnapshot.docs[0];
-          emailToAuth = userDoc.data().email;
+          emailToAuth = querySnapshot.docs[0].data().email;
         } else {
-          // Try also searching by raw digits without formatting if not found
           const q2 = query(collection(db, 'users'), where('phone', '==', emailToAuth));
-          const querySnapshot2 = await getDocs(q2);
+          const querySnapshot2 = await Promise.race([getDocs(q2), timeoutPromise]) as any;
           if (!querySnapshot2.empty) {
             emailToAuth = querySnapshot2.docs[0].data().email;
           }
         }
       }
 
-      // Perform real auth
-      const userProfile = await login(emailToAuth, password);
+      console.log(`[Diagnostic] flowId=${flowId} etapa=firebase-signin-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+      
+      // Perform auth raced with timeout
+      const authPromise = login(emailToAuth, password);
+      const userProfile = await Promise.race([authPromise, timeoutPromise]) as UserProfile;
+      const partialUid = userProfile.uid ? `${userProfile.uid.slice(0, 5)}...` : 'N/A';
 
+      console.log(`[Diagnostic] flowId=${flowId} etapa=firebase-signin-success uid=${partialUid} role=${userProfile.role} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+
+      console.log(`[Diagnostic] flowId=${flowId} etapa=redirect-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+      
       // Redirect depending on user role
       if (userProfile.role === 'Admin') {
         router.push('/admin');
@@ -87,10 +106,16 @@ export default function LoginPage() {
       } else {
         router.push('/');
       }
+      
+      console.log(`[Diagnostic] flowId=${flowId} etapa=redirect-completed elapsed=${(performance.now() - t0).toFixed(0)}ms`);
     } catch (error: any) {
-      console.error('Login error:', error);
+      const duration = (performance.now() - t0).toFixed(0);
+      console.error(`[Diagnostic] flowId=${flowId} etapa=login-failed duration=${duration}ms error=${error?.code || 'unknown'} message=${error?.message || String(error)}`);
+      
       let errMsg = 'Las credenciales ingresadas son incorrectas o el usuario no existe.';
-      if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+      if (error.message === 'TIMEOUT_EXCEEDED') {
+        errMsg = 'La operación ha tardado más de 10 segundos. Se interrumpió por timeout.';
+      } else if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
         errMsg = 'El correo o la contraseña son incorrectos.';
       } else if (error.code === 'auth/invalid-email') {
         errMsg = 'El formato del correo electrónico ingresado no es válido.';
@@ -99,6 +124,7 @@ export default function LoginPage() {
       }
       setErrorMsg(errMsg);
     } finally {
+      console.log(`[Diagnostic] flowId=${flowId} etapa=login-finally elapsed=${(performance.now() - t0).toFixed(0)}ms`);
       setIsLoading(false);
     }
   };
@@ -202,6 +228,12 @@ export default function LoginPage() {
                 />
               </div>
             </form>
+            
+            {diagFlowId && (
+              <div className="text-center text-[10px] text-slate-400 font-extrabold uppercase tracking-widest bg-slate-50 border border-[#E7E7EC] py-2 rounded-xl">
+                Código de diagnóstico: {diagFlowId}
+              </div>
+            )}
 
             <div className="relative flex items-center justify-center my-4">
               <span className="absolute w-full border-t border-[#E7E7EC]"></span>
