@@ -74,6 +74,8 @@ interface Courier {
   vehicle: string;
   plate: string;
   status: 'Disponible' | 'En ruta' | 'Offline' | string;
+  active?: boolean;
+  operationalType?: string;
 }
 
 // Initial Data Constants
@@ -254,16 +256,18 @@ export default function AdminDashboard() {
       const firestoreCouriers = snapshot.docs.map((docSnap) => {
         const o = docSnap.data();
         return {
-          id: o.id || docSnap.id,
-          userUid: o.userUid,
+          id: docSnap.id,
+          userUid: o.userUid || docSnap.id,
           name: o.fullName || 'Motorista',
           phone: o.phone || '',
-          vehicle: o.vehicleType || 'motocicleta',
-          plate: o.vehiclePlate || 'N/A',
-          status: o.status === 'available' ? 'Disponible' : o.status === 'on_route' ? 'En ruta' : 'Offline'
+          vehicle: o.vehicleType || o.vehicle?.type || 'motocicleta',
+          plate: o.vehiclePlate || o.vehicle?.plate || 'N/A',
+          status: o.status === 'available' ? 'Disponible' : o.status === 'on_route' ? 'En ruta' : 'Offline',
+          active: o.active !== undefined ? o.active : true,
+          operationalType: o.operationalType || 'courier',
         };
       });
-      setCouriers(firestoreCouriers as Courier[]);
+      setCouriers(firestoreCouriers as any[]);
     }, (error) => {
       console.error("Error reading Firestore couriers in Admin dashboard:", error);
       setCouriers([]);
@@ -334,6 +338,7 @@ export default function AdminDashboard() {
         courierId: courierId,
         courierUid: courierUid || courierId,
         courierName: courierName,
+        courierType: selectedCourier?.operationalType || 'courier',
         assignedByUid: profile?.uid || 'ADMIN',
         assignedAt: new Date().toISOString(),
         status: 'assigned',
@@ -984,14 +989,24 @@ export default function AdminDashboard() {
                             <td className="py-4 px-6">
                               <select 
                                 id={`courier-assign-${order.id}`}
-                                className="bg-white border border-[#E7E7EC] rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-[#d3121a]"
+                                className="bg-white border border-[#E7E7EC] rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-[#d3121a] w-full"
                                 defaultValue=""
                               >
                                 <option value="" disabled>Seleccionar...</option>
-                                <option value="Gina (Administrador)">Gina (Admin - Yo)</option>
-                                {couriers.map(c => (
-                                  <option key={c.id} value={c.name}>{c.name} ({c.vehicle})</option>
-                                ))}
+                                {couriers
+                                  .filter(c => {
+                                    // 1. Must be active
+                                    if (c.active === false) return false;
+                                    // 2. Status must not be suspended
+                                    if (c.status === 'suspended') return false;
+                                    // 3. Either normal courier or operational admin_courier
+                                    return c.operationalType === 'admin_courier' || c.operationalType === 'courier' || !c.operationalType;
+                                  })
+                                  .map(c => (
+                                    <option key={c.id} value={c.name}>
+                                      {c.name} {c.operationalType === 'admin_courier' ? '(Admin / Repartidor)' : `(${c.vehicle})`}
+                                    </option>
+                                  ))}
                               </select>
                             </td>
                             <td className="py-4 px-6 text-right">
