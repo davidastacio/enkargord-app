@@ -28,12 +28,22 @@ export default function StoreOrdersList() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [retryCounter, setRetryCounter] = useState(0);
 
   // Load from Firestore in real-time
   useEffect(() => {
     if (profile?.uid) {
+      setLoading(true);
+      setFetchError(null);
       const storeId = profile.storeId || profile.uid;
-      const q = query(collection(db, 'orders'), where('storeId', '==', storeId));
+      
+      const q = query(
+        collection(db, 'orders'), 
+        where('storeId', '==', storeId)
+      );
+
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const firestoreOrders = snapshot.docs.map((docSnap) => {
           const o = docSnap.data();
@@ -46,19 +56,29 @@ export default function StoreOrdersList() {
             status: o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
             amount: (o.collectionAmount || 0) + (o.shippingCost || 0),
             courierName: o.courierName || 'No asignado',
-            date: o.createdAt ? o.createdAt.split('T')[0] : 'Hoy'
+            date: o.createdAt ? o.createdAt.split('T')[0] : 'Hoy',
+            rawCreatedAt: o.createdAt || ''
           };
         });
+        
+        // Client-side desc sort to avoid Firestore index builds requirement constraints
+        firestoreOrders.sort((a, b) => b.rawCreatedAt.localeCompare(a.rawCreatedAt));
+        
         setOrders(firestoreOrders as OrderRow[]);
+        setLoading(false);
       }, (error) => {
         console.error("Error listening to store orders:", error);
+        setFetchError("No pudimos cargar tus pedidos.");
         setOrders([]);
+        setLoading(false);
       });
+      
       return () => unsubscribe();
     } else {
       setOrders([]);
+      setLoading(false);
     }
-  }, [profile]);
+  }, [profile, retryCounter]);
 
   const handleCancelOrder = async (id: string) => {
     if (confirm(`¿Estás seguro de que deseas cancelar la orden #${id}?`)) {
@@ -162,7 +182,34 @@ export default function StoreOrdersList() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E7E7EC] text-xs">
-              {filtered.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={10} className="py-12 text-center text-slate-400 font-semibold">
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
+                      Cargando tus pedidos...
+                    </div>
+                  </td>
+                </tr>
+              ) : fetchError ? (
+                <tr>
+                  <td colSpan={10} className="py-12 text-center text-slate-500 font-semibold space-y-3">
+                    <p>{fetchError}</p>
+                    <button 
+                      onClick={() => setRetryCounter(prev => prev + 1)} 
+                      className="px-4 py-2 border border-[#E7E7EC] rounded-xl hover:bg-slate-50 text-slate-700 font-extrabold text-[10px] uppercase tracking-wider"
+                    >
+                      Reintentar
+                    </button>
+                  </td>
+                </tr>
+              ) : orders.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="py-12 text-center text-slate-400 font-semibold">
+                    Aún no tienes pedidos registrados.
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="py-12 text-center text-slate-400 font-semibold">
                     No se encontraron guías coincidentes.
@@ -171,7 +218,11 @@ export default function StoreOrdersList() {
               ) : (
                 filtered.map((o) => (
                   <tr key={o.trackingId} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="py-4 px-6 font-bold text-slate-900">#{o.trackingId}</td>
+                    <td className="py-4 px-6 font-bold text-slate-900">
+                      <Link href={`/tienda/pedidos/${o.trackingId}`} className="hover:underline">
+                        #{o.trackingId}
+                      </Link>
+                    </td>
                     <td className="py-4 px-6 font-semibold text-slate-700">{o.customerName}</td>
                     <td className="py-4 px-6 text-slate-600 font-medium">{o.customerPhone}</td>
                     <td className="py-4 px-6 text-slate-500 max-w-[200px] truncate">{o.address}</td>
@@ -189,7 +240,7 @@ export default function StoreOrdersList() {
                         {o.status === 'in_transit' ? 'En tránsito' : o.status === 'delivered' ? 'Entregado' : 'Pendiente'}
                       </span>
                     </td>
-
+ 
                     <td className="py-4 px-6 font-semibold text-slate-700">{o.courierName}</td>
                     <td className="py-4 px-6 text-slate-500 font-medium">{o.date}</td>
                     
