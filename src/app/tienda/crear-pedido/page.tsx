@@ -403,22 +403,17 @@ export default function CreateOrder() {
       
       const newOrder = {
         id: `ENK-${nextNumber}`,
-        trackingId: `ENK-${nextNumber}`,
+        tracking: `ENK-${nextNumber}`,
         status: 'pending',
         storeId: profile?.uid || "STORE_01",
-        storeName: profile?.name || "Moda Express RD",
-        courierName: "No asignado",
-        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        createdAt: new Date().toISOString(),
-        customer: {
-          name: custName,
-          phone: custPhone,
-          email: custEmail || undefined
-        },
-        country,
-        provinceId: selectedProvId,
+        createdByUid: profile?.uid || "STORE_01",
+        customerName: custName,
+        customerPhone: custPhone,
+        customerAlternatePhone: custPhoneAlt || undefined,
+        customerEmail: custEmail || undefined,
+        provinceId: selectedProvId || undefined,
         provinceName: provName,
-        municipalityId: selectedMunId,
+        municipalityId: selectedMunId || undefined,
         municipalityName: munName,
         municipalDistrictId: selectedDistId || undefined,
         municipalDistrictName: selectedDistId ? MUNICIPAL_DISTRICTS.find(d => d.id === selectedDistId)?.name : undefined,
@@ -426,36 +421,26 @@ export default function CreateOrder() {
         sectorName: sectorName,
         sectorIsCustom: isCustomSector,
         street,
-        streetNumber,
-        reference,
+        streetNumber: streetNumber || undefined,
+        reference: reference || undefined,
         formattedAddress,
-        deliveryAddress: {
-          addressLine: formattedAddress,
-          city: `${sectorName} (${provName})`,
-          coordinates: { lat: latitude, lng: longitude }
-        },
-        deliveryLocationUrl: sharedLocationUrl || undefined,
-        deliveryLatitude: latitude,
-        deliveryLongitude: longitude,
-        deliveryLocationSource: locationSource,
-        deliveryLocationVerified: locationVerified,
-        
-        packageInfo: {
-          type: packageType,
-          count: parseInt(packagesCount) || 1,
-          weight: weight || undefined,
-          handling: handling
-        },
-        fulfillment: false,
-        financials: {
-          productCost: pCost,
-          shippingCost: shippingFee,
-          fulfillmentCost: 0,
-          totalCollected: pCost + shippingFee,
-          storeOwnerAmount: pCost,
-          polancoCommission: 50,
-          transportadoraCommission: shippingFee - 50
-        }
+        latitude: latitude || undefined,
+        longitude: longitude || undefined,
+        locationVerified,
+        locationSource,
+        packageType,
+        packageQuantity: parseInt(packagesCount) || 1,
+        approximateWeight: weight || undefined,
+        handlingInstructions: handling || [],
+        requiresCashOnDelivery: requiresCod,
+        collectionAmount: pCost,
+        shippingCost: shippingFee,
+        paymentMethod: 'cash',
+        requiresFulfillment: false,
+        courierId: null,
+        courierName: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       };
 
       // 1. Save to Cloud Firestore
@@ -465,7 +450,7 @@ export default function CreateOrder() {
       const updated = [newOrder, ...currentOrders];
       localStorage.setItem('enkargord_orders', JSON.stringify(updated));
 
-      triggerToast(`Guía logística #${newOrder.trackingId} registrada.`);
+      triggerToast(`Guía logística #${newOrder.tracking} registrada.`);
       router.push('/tienda/pedidos');
     } catch (err: any) {
       console.error("Error creating order in Firestore:", err);

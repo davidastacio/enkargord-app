@@ -39,14 +39,17 @@ export default function StoreDashboard() {
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const firestoreOrders = snapshot.docs.map((docSnap) => {
           const o = docSnap.data();
+          const timeString = o.createdAt 
+            ? new Date(o.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+            : 'N/A';
           return {
-            trackingId: o.trackingId,
-            customerName: o.customer.name,
-            address: o.deliveryAddress.addressLine || o.deliveryAddress.fullAddress,
+            trackingId: o.tracking || o.id,
+            customerName: o.customerName,
+            address: o.formattedAddress || o.street,
             status: o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
-            amount: o.financials.totalCollected,
+            amount: (o.collectionAmount || 0) + (o.shippingCost || 0),
             courierName: o.courierName || 'No asignado',
-            time: o.time || 'N/A'
+            time: timeString
           };
         });
         setOrders(firestoreOrders as OrderRow[]);
@@ -59,15 +62,21 @@ export default function StoreDashboard() {
       const local = localStorage.getItem('enkargord_orders');
       if (local) {
         const parsed = JSON.parse(local);
-        const mapped = parsed.map((o: any) => ({
-          trackingId: o.trackingId,
-          customerName: o.customer.name,
-          address: o.deliveryAddress.addressLine || o.deliveryAddress.fullAddress,
-          status: o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
-          amount: o.financials.totalCollected,
-          courierName: o.courierName || 'No asignado',
-          time: o.time || 'N/A'
-        }));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mapped = parsed.map((o: any) => {
+          const timeString = o.createdAt 
+            ? new Date(o.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+            : 'N/A';
+          return {
+            trackingId: o.tracking || o.id || o.trackingId,
+            customerName: o.customerName || o.customer?.name,
+            address: o.formattedAddress || o.street || o.deliveryAddress?.addressLine,
+            status: o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
+            amount: o.collectionAmount !== undefined ? ((o.collectionAmount || 0) + (o.shippingCost || 0)) : (o.financials?.totalCollected || 0),
+            courierName: o.courierName || 'No asignado',
+            time: timeString
+          };
+        });
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setOrders(mapped);
       }

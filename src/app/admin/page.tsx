@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import MapComponent from '@/components/MapComponent';
+import { collection, query, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
 
 // TypeScript Types
 interface Financials {
@@ -197,18 +199,59 @@ export default function AdminDashboard() {
   const [cFormPlate, setCFormPlate] = useState('');
   const [cFormUser, setCFormUser] = useState('');
 
-  // Hydrate states from localStorage on Client Side mount
+  // Hydrate states from Firestore & localstorage on Client Side mount
   useEffect(() => {
-    const localOrders = localStorage.getItem('enkargord_orders');
+    // 1. Subscribe to Firestore orders in real-time
+    const q = query(collection(db, 'orders'));
+    const unsubscribeOrders = onSnapshot(q, (snapshot) => {
+      const firestoreOrders = snapshot.docs.map((docSnap) => {
+        const o = docSnap.data();
+        return {
+          id: o.id || docSnap.id,
+          trackingId: o.tracking || o.trackingId || docSnap.id,
+          status: o.status || 'pending',
+          storeId: o.storeId || 'STORE_01',
+          storeName: o.storeName || 'Moda Express RD',
+          courierName: o.courierName || 'No asignado',
+          time: o.time || (o.createdAt ? new Date(o.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A'),
+          createdAt: o.createdAt || new Date().toISOString(),
+          customer: {
+            name: o.customerName || o.customer?.name || 'Cliente',
+            phone: o.customerPhone || o.customer?.phone || 'N/A'
+          },
+          deliveryAddress: {
+            addressLine: o.formattedAddress || o.street || o.deliveryAddress?.addressLine || 'Sin dirección',
+            city: o.municipalityName ? `${o.sectorName} (${o.municipalityName})` : (o.deliveryAddress?.city || 'Santo Domingo'),
+            coordinates: {
+              lat: o.latitude || o.deliveryLatitude || 18.4795,
+              lng: o.longitude || o.deliveryLongitude || -69.9326
+            }
+          },
+          fulfillment: o.requiresFulfillment || false,
+          financials: {
+            productCost: o.collectionAmount !== undefined ? o.collectionAmount : (o.financials?.productCost || 0),
+            shippingCost: o.shippingCost !== undefined ? o.shippingCost : (o.financials?.shippingCost || 0),
+            fulfillmentCost: 0,
+            totalCollected: (o.collectionAmount || 0) + (o.shippingCost || 0),
+            storeOwnerAmount: o.collectionAmount || 0,
+            polancoCommission: 50,
+            transportadoraCommission: (o.shippingCost || 0) - 50
+          }
+        };
+      });
+      setOrders(firestoreOrders as Order[]);
+    }, (error) => {
+      console.error("Error reading Firestore orders in Admin dashboard:", error);
+      // Fallback if permission denied / offline
+      const localOrders = localStorage.getItem('enkargord_orders');
+      if (localOrders) {
+        setOrders(JSON.parse(localOrders));
+      } else {
+        setOrders(DEFAULT_ORDERS);
+      }
+    });
+
     const localCouriers = localStorage.getItem('enkargord_couriers');
-
-    if (localOrders) {
-      setOrders(JSON.parse(localOrders));
-    } else {
-      setOrders(DEFAULT_ORDERS);
-      localStorage.setItem('enkargord_orders', JSON.stringify(DEFAULT_ORDERS));
-    }
-
     if (localCouriers) {
       setCouriers(JSON.parse(localCouriers));
     } else {
@@ -229,6 +272,8 @@ export default function AdminDashboard() {
       setActiveTab('dispatch');
       setActiveSidebarMenu('dashboard');
     }
+
+    return () => unsubscribeOrders();
   }, []);
 
   // Show dynamic toast helper
@@ -258,70 +303,73 @@ export default function AdminDashboard() {
   };
 
   // Dispatch unassigned order action handler
-  const handleAssignCourier = (orderId: string, courierName: string) => {
+  const handleAssignCourier = async (orderId: string, courierName: string) => {
     if (!courierName) return;
 
-    const updatedOrders = orders.map(o => {
-      if (o.id === orderId) {
-        return { ...o, courierName, status: 'in_transit' as const };
-      }
-      return o;
-    });
+    try {
+      // 1. Find the courier document id or update the order document directly
+      await updateDoc(doc(db, 'orders', orderId), {
+        courierName: courierName,
+        status: 'in_transit',
+        updatedAt: new Date().toISOString()
+      });
 
-    const updatedCouriers = couriers.map(c => {
-      if (c.name === courierName) {
-        return { ...c, status: 'En ruta' as const };
-      }
-      return c;
-    });
+      const updatedCouriers = couriers.map(c => {
+        if (c.name === courierName) {
+          return { ...c, status: 'En ruta' as const };
+        }
+        return c;
+      });
 
-    setOrders(updatedOrders);
-    setCouriers(updatedCouriers);
-    localStorage.setItem('enkargord_orders', JSON.stringify(updatedOrders));
-    localStorage.setItem('enkargord_couriers', JSON.stringify(updatedCouriers));
+      setCouriers(updatedCouriers);
+      localStorage.setItem('enkargord_couriers', JSON.stringify(updatedCouriers));
 
-    triggerToast(`Pedido #${orderId} asignado y despachado con ${courierName}.`);
+      triggerToast(`Pedido #${orderId} asignado y despachado con ${courierName}.`);
+    } catch (error) {
+      console.error("Error assigning courier in Firestore:", error);
+      alert("Error al asignar el repartidor en la base de datos.");
+    }
   };
 
   // Update in transit package status manually in control tower
-  const handleUpdateStatus = (orderId: string, newStatus: Order['status']) => {
-    const updatedOrders = orders.map(o => {
-      if (o.id === orderId) {
-        return { ...o, status: newStatus };
-      }
-      return o;
-    });
+  const handleUpdateStatus = async (orderId: string, newStatus: Order['status']) => {
+    try {
+      await updateDoc(doc(db, 'orders', orderId), {
+        status: newStatus,
+        updatedAt: new Date().toISOString()
+      });
 
-    // Check if we need to free the courier
-    let finalCouriers = [...couriers];
-    if (newStatus === 'delivered' || newStatus === 'pending') {
-      const targetOrder = orders.find(o => o.id === orderId);
-      if (targetOrder) {
-        const cName = targetOrder.courierName;
-        // check if this courier has any other in transit package left
-        const remainingTransit = updatedOrders.filter(o => o.courierName === cName && o.status === 'in_transit');
-        if (remainingTransit.length === 0) {
-          finalCouriers = couriers.map(c => {
-            if (c.name === cName) {
-              return { ...c, status: 'Disponible' as const };
-            }
-            return c;
-          });
+      // Check if we need to free the courier
+      let finalCouriers = [...couriers];
+      if (newStatus === 'delivered' || newStatus === 'pending') {
+        const targetOrder = orders.find(o => o.id === orderId);
+        if (targetOrder) {
+          const cName = targetOrder.courierName;
+          const remainingTransit = orders.filter(o => o.id !== orderId && o.courierName === cName && o.status === 'in_transit');
+          if (remainingTransit.length === 0) {
+            finalCouriers = couriers.map(c => {
+              if (c.name === cName) {
+                return { ...c, status: 'Disponible' as const };
+              }
+              return c;
+            });
+          }
         }
       }
+
+      setCouriers(finalCouriers);
+      localStorage.setItem('enkargord_couriers', JSON.stringify(finalCouriers));
+
+      const friendlyStatus = newStatus === 'delivered' ? 'Entregado' : newStatus === 'no_contesta' ? 'No Contesta' : newStatus;
+      triggerToast(`Pedido #${orderId} actualizado a estado: "${friendlyStatus}".`);
+    } catch (error) {
+      console.error("Error updating order status in Firestore:", error);
+      alert("Error al actualizar el estado del pedido.");
     }
-
-    setOrders(updatedOrders);
-    setCouriers(finalCouriers);
-    localStorage.setItem('enkargord_orders', JSON.stringify(updatedOrders));
-    localStorage.setItem('enkargord_couriers', JSON.stringify(finalCouriers));
-
-    const friendlyStatus = newStatus === 'delivered' ? 'Entregado' : newStatus === 'no_contesta' ? 'No Contesta' : newStatus;
-    triggerToast(`Pedido #${orderId} actualizado a estado: "${friendlyStatus}".`);
   };
 
   // Simulate courier moving to next location coordinates
-  const handleSimulateNextZone = (orderId: string) => {
+  const handleSimulateNextZone = async (orderId: string) => {
     const sectors = [
       { zone: "Naco (Santo Domingo)", lat: 18.4795, lng: -69.9326 },
       { zone: "Bella Vista (Santo Domingo)", lat: 18.4556, lng: -69.9489 },
@@ -331,72 +379,73 @@ export default function AdminDashboard() {
 
     const randomSector = sectors[Math.floor(Math.random() * sectors.length)];
 
-    const updatedOrders = orders.map(o => {
-      if (o.id === orderId) {
-        return {
-          ...o,
-          deliveryAddress: {
-            ...o.deliveryAddress,
-            city: randomSector.zone,
-            coordinates: { lat: randomSector.lat, lng: randomSector.lng }
-          }
-        };
-      }
-      return o;
-    });
+    try {
+      await updateDoc(doc(db, 'orders', orderId), {
+        formattedAddress: `${formCustAddress || 'Santo Domingo'} - ${randomSector.zone}`,
+        latitude: randomSector.lat,
+        longitude: randomSector.lng,
+        updatedAt: new Date().toISOString()
+      });
 
-    setOrders(updatedOrders);
-    localStorage.setItem('enkargord_orders', JSON.stringify(updatedOrders));
-    triggerToast(`Courier de envío #${orderId} ingresó a la zona de ${randomSector.zone.split(' ')[0]}.`);
+      triggerToast(`Courier de envío #${orderId} ingresó a la zona de ${randomSector.zone.split(' ')[0]}.`);
+    } catch (error) {
+      console.error("Error simulating next zone in Firestore:", error);
+    }
   };
 
   // Direct Order Submission Form Handler
-  const handleCreateOrderSubmit = (e: React.FormEvent) => {
+  const handleCreateOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const pCost = parseFloat(formProdCost) || 0;
     const sCost = parseFloat(formShipCost) || 0;
-    const financialDetails = calculateFinancials(pCost, sCost, false);
 
     const nextNumber = orders.length > 0
       ? Math.max(...orders.map(o => parseInt(o.trackingId.split('-')[1]) || 0)) + 1
       : 1251;
 
-    const newOrder: Order = {
+    const newOrder = {
       id: `ENK-${nextNumber}`,
-      trackingId: `ENK-${nextNumber}`,
+      tracking: `ENK-${nextNumber}`,
       status: 'pending',
       storeId: "ADMIN_DIRECT",
-      storeName: "Pedido Directo Admin",
-      courierName: "No asignado",
-      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      createdByUid: "ADMIN",
+      customerName: formCustName,
+      customerPhone: formCustPhone,
+      provinceName: "Santo Domingo",
+      municipalityName: "Distrito Nacional",
+      sectorName: formCustCity.split('(')[0].trim(),
+      street: formCustAddress,
+      formattedAddress: formCustAddress,
+      latitude: 18.4861 + (Math.random() - 0.5) * 0.03,
+      longitude: -69.9312 + (Math.random() - 0.5) * 0.03,
+      locationVerified: false,
+      packageType: "Paquete",
+      packageQuantity: 1,
+      requiresCashOnDelivery: pCost > 0,
+      collectionAmount: pCost,
+      shippingCost: sCost,
+      paymentMethod: "cash",
+      requiresFulfillment: false,
+      courierId: null,
+      courierName: null,
       createdAt: new Date().toISOString(),
-      customer: {
-        name: formCustName,
-        phone: formCustPhone
-      },
-      deliveryAddress: {
-        addressLine: formCustAddress,
-        city: formCustCity,
-        coordinates: {
-          lat: 18.4861 + (Math.random() - 0.5) * 0.03,
-          lng: -69.9312 + (Math.random() - 0.5) * 0.03
-        }
-      },
-      fulfillment: false,
-      financials: financialDetails
+      updatedAt: new Date().toISOString()
     };
 
-    const updatedOrders = [...orders, newOrder];
-    setOrders(updatedOrders);
-    localStorage.setItem('enkargord_orders', JSON.stringify(updatedOrders));
+    try {
+      await setDoc(doc(db, 'orders', newOrder.id), newOrder);
 
-    // Reset Inputs
-    setFormCustName('');
-    setFormCustPhone('');
-    setFormCustAddress('');
-    setIsOrderModalOpen(false);
-    triggerToast(`Pedido #${newOrder.trackingId} creado en la bandeja de entrada.`);
+      // Reset Inputs
+      setFormCustName('');
+      setFormCustPhone('');
+      setFormCustAddress('');
+      setIsOrderModalOpen(false);
+      triggerToast(`Pedido #${newOrder.tracking} creado en la bandeja de entrada.`);
+    } catch (error) {
+      console.error("Error creating direct order in Firestore:", error);
+      alert("Error al guardar el pedido en la base de datos.");
+    }
   };
 
   // Fleet Add Courier form handler
@@ -435,19 +484,34 @@ export default function AdminDashboard() {
   };
 
   // Final Close Cashbox action (Tab 3)
-  const handleCloseCashbox = () => {
-    const deliveredCount = orders.filter(o => o.status === 'delivered').length;
+  const handleCloseCashbox = async () => {
+    const deliveredOrders = orders.filter(o => o.status === 'delivered');
+    const deliveredCount = deliveredOrders.length;
     if (deliveredCount === 0) {
       alert("No hay envíos completados listos para liquidar hoy.");
       return;
     }
 
     if (confirm(`¿Proceder con el cuadre financiero de ${deliveredCount} envíos entregados hoy?`)) {
-      // Clear delivered orders from active list
-      const updated = orders.filter(o => o.status !== 'delivered');
-      setOrders(updated);
-      localStorage.setItem('enkargord_orders', JSON.stringify(updated));
-      triggerToast("Cierre de caja finalizado. Liquidaciones registradas.");
+      try {
+        // Clear delivered orders from database
+        const deletePromises = deliveredOrders.map(o => deleteDoc(doc(db, 'orders', o.id)));
+        await Promise.all(deletePromises);
+        
+        // Sync local storage fallback
+        const local = localStorage.getItem('enkargord_orders');
+        if (local) {
+          const parsed = JSON.parse(local);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const updatedLocal = parsed.filter((o: any) => o.status !== 'delivered');
+          localStorage.setItem('enkargord_orders', JSON.stringify(updatedLocal));
+        }
+        
+        triggerToast("Cierre de caja finalizado. Liquidaciones registradas.");
+      } catch (error) {
+        console.error("Error closing cashbox in Firestore:", error);
+        alert("Error al finalizar el cuadre en la base de datos.");
+      }
     }
   };
 

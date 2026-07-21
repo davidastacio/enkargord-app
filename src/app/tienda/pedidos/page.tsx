@@ -37,13 +37,13 @@ export default function StoreOrdersList() {
         const firestoreOrders = snapshot.docs.map((docSnap) => {
           const o = docSnap.data();
           return {
-            trackingId: o.trackingId,
-            customerName: o.customer.name,
-            customerPhone: o.customer.phone || 'N/A',
-            address: o.deliveryAddress.addressLine || o.deliveryAddress.fullAddress,
-            packageType: o.packageInfo?.type || 'Paquete pequeño',
-            status: o.status === 'in_transit' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
-            amount: o.financials.totalCollected,
+            trackingId: o.tracking || o.id,
+            customerName: o.customerName,
+            customerPhone: o.customerPhone || 'N/A',
+            address: o.formattedAddress || o.street,
+            packageType: o.packageType || 'Paquete',
+            status: o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
+            amount: (o.collectionAmount || 0) + (o.shippingCost || 0),
             courierName: o.courierName || 'No asignado',
             date: o.createdAt ? o.createdAt.split('T')[0] : '2026-07-20'
           };
@@ -60,13 +60,13 @@ export default function StoreOrdersList() {
         const parsed = JSON.parse(local);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const mapped = parsed.map((o: any) => ({
-          trackingId: o.trackingId,
-          customerName: o.customer.name,
-          customerPhone: o.customer.phone || 'N/A',
-          address: o.deliveryAddress.addressLine || o.deliveryAddress.fullAddress,
-          packageType: o.packageInfo?.type || 'Paquete pequeño',
-          status: o.status === 'in_transit' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
-          amount: o.financials.totalCollected,
+          trackingId: o.tracking || o.id,
+          customerName: o.customerName || o.customer?.name,
+          customerPhone: o.customerPhone || o.customer?.phone || 'N/A',
+          address: o.formattedAddress || o.street || o.deliveryAddress?.addressLine,
+          packageType: o.packageType || o.packageInfo?.type || 'Paquete',
+          status: o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
+          amount: o.collectionAmount !== undefined ? ((o.collectionAmount || 0) + (o.shippingCost || 0)) : (o.financials?.totalCollected || 0),
           courierName: o.courierName || 'No asignado',
           date: o.createdAt ? o.createdAt.split('T')[0] : '2026-07-20'
         }));
@@ -87,7 +87,7 @@ export default function StoreOrdersList() {
         if (local) {
           const parsed = JSON.parse(local);
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const filtered = parsed.filter((o: any) => o.trackingId !== id);
+          const filtered = parsed.filter((o: any) => (o.tracking !== id && o.trackingId !== id));
           localStorage.setItem('enkargord_orders', JSON.stringify(filtered));
         }
 
