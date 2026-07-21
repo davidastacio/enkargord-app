@@ -417,20 +417,29 @@ export default function CreateOrder() {
       
       const storeIdReal = profile?.storeId || profile?.uid || "STORE_01";
 
+      // Secure and Unique Tracking Code Generation: ENK-YYYYMMDD-XXXXX
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}${mm}${dd}`;
+      const randomId = Math.random().toString(36).substring(2, 7).toUpperCase();
+      const orderTrackingCode = `ENK-${dateStr}-${randomId}`;
+
       const newOrder = {
-        id: `ENK-${nextNumber}`,
-        tracking: `ENK-${nextNumber}`,
+        id: orderTrackingCode,
+        tracking: orderTrackingCode,
         storeId: storeIdReal,
         createdByUid: profile?.uid || "STORE_01",
         
         customerName: custName,
         customerPhone: custPhone,
-        customerAlternatePhone: custPhoneAlt || "",
-        customerEmail: custEmail || "",
+        customerAlternatePhone: custPhoneAlt || null,
+        customerEmail: custEmail || null,
         
-        provinceId: selectedProvId || "",
+        provinceId: selectedProvId || null,
         provinceName: provName,
-        municipalityId: selectedMunId || "",
+        municipalityId: selectedMunId || null,
         municipalityName: munName,
         municipalDistrictId: selectedDistId || null,
         municipalDistrictName: selectedDistId ? (MUNICIPAL_DISTRICTS.find(d => d.id === selectedDistId)?.name || null) : null,
@@ -438,28 +447,28 @@ export default function CreateOrder() {
         sectorName: sectorName,
         sectorIsCustom: isCustomSector,
         
-        street: street || "",
-        streetNumber: streetNumber || "",
-        reference: reference || "",
-        formattedAddress: formattedAddress || "",
+        street: street || null,
+        streetNumber: streetNumber || null,
+        reference: reference || null,
+        formattedAddress: formattedAddress || null,
         
         latitude: latitude || null,
         longitude: longitude || null,
         locationVerified,
-        locationSource,
+        locationSource: locationSource || null,
         
-        packageType,
+        packageType: packageType || null,
         packageQuantity: parseInt(packagesCount) || 1,
-        approximateWeight: weight || "",
+        approximateWeight: weight ? (parseFloat(weight) || null) : null,
         handlingInstructions: handling || [],
         
         requiresCashOnDelivery: requiresCod,
-        collectionAmount: pCost,
+        collectionAmount: requiresCod ? (parseFloat(collectAmount) || 0) : 0,
         shippingCost: shippingFee,
-        paymentMethod: 'cash',
+        paymentMethod: paymentMethod || null,
         
         requiresFulfillment: false,
-        fulfillmentType: "",
+        fulfillmentType: null,
         
         courierId: null,
         courierUid: null,
@@ -489,10 +498,14 @@ export default function CreateOrder() {
       const updated = [newOrder, ...currentOrders];
       localStorage.setItem('enkargord_orders', JSON.stringify(updated));
 
-      triggerToast(`Guía logística #${newOrder.tracking} registrada.`);
+      triggerToast("Pedido creado correctamente.");
 
       console.log(`[Diagnostic] flowId=${flowId} etapa=redirect-start target=/tienda/pedidos/${newOrder.id} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+      
+      // Delay navigation slightly so toast registers
       router.push(`/tienda/pedidos/${newOrder.id}`);
+      router.refresh();
+      
       console.log(`[Diagnostic] flowId=${flowId} etapa=redirect-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
     } catch (err: any) {
       console.error("Error creating order in Firestore:", err);
