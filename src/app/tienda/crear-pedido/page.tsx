@@ -415,44 +415,58 @@ export default function CreateOrder() {
 
       const pCost = requiresCod ? (parseFloat(collectAmount) || 0) : 0;
       
+      const storeIdReal = profile?.storeId || profile?.uid || "STORE_01";
+
       const newOrder = {
         id: `ENK-${nextNumber}`,
         tracking: `ENK-${nextNumber}`,
-        status: 'pending',
-        storeId: profile?.uid || "STORE_01",
+        storeId: storeIdReal,
         createdByUid: profile?.uid || "STORE_01",
+        
         customerName: custName,
         customerPhone: custPhone,
         customerAlternatePhone: custPhoneAlt || "",
         customerEmail: custEmail || "",
+        
         provinceId: selectedProvId || "",
         provinceName: provName,
         municipalityId: selectedMunId || "",
         municipalityName: munName,
-        municipalDistrictId: selectedDistId || "",
-        municipalDistrictName: selectedDistId ? (MUNICIPAL_DISTRICTS.find(d => d.id === selectedDistId)?.name || "") : "",
-        sectorId: selectedSectorId === 'custom' ? null : (selectedSectorId || ""),
+        municipalDistrictId: selectedDistId || null,
+        municipalDistrictName: selectedDistId ? (MUNICIPAL_DISTRICTS.find(d => d.id === selectedDistId)?.name || null) : null,
+        sectorId: selectedSectorId === 'custom' ? null : (selectedSectorId || null),
         sectorName: sectorName,
         sectorIsCustom: isCustomSector,
+        
         street: street || "",
         streetNumber: streetNumber || "",
         reference: reference || "",
         formattedAddress: formattedAddress || "",
+        
         latitude: latitude || null,
         longitude: longitude || null,
         locationVerified,
         locationSource,
+        
         packageType,
         packageQuantity: parseInt(packagesCount) || 1,
         approximateWeight: weight || "",
         handlingInstructions: handling || [],
+        
         requiresCashOnDelivery: requiresCod,
         collectionAmount: pCost,
         shippingCost: shippingFee,
         paymentMethod: 'cash',
+        
         requiresFulfillment: false,
+        fulfillmentType: "",
+        
         courierId: null,
+        courierUid: null,
         courierName: null,
+        
+        status: "pending",
+        
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -477,8 +491,8 @@ export default function CreateOrder() {
 
       triggerToast(`Guía logística #${newOrder.tracking} registrada.`);
 
-      console.log(`[Diagnostic] flowId=${flowId} etapa=redirect-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-      router.push('/tienda/pedidos');
+      console.log(`[Diagnostic] flowId=${flowId} etapa=redirect-start target=/tienda/pedidos/${newOrder.id} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+      router.push(`/tienda/pedidos/${newOrder.id}`);
       console.log(`[Diagnostic] flowId=${flowId} etapa=redirect-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
     } catch (err: any) {
       console.error("Error creating order in Firestore:", err);
