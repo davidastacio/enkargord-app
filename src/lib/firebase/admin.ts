@@ -12,7 +12,19 @@ function getFirebaseAdminApp() {
   }
 
   // Handle newlines securely
-  const privateKey = privateKeyRaw.replace(/\\n/g, '\n');
+  // Support both raw multiline keys and escaped \n strings
+  let privateKey = privateKeyRaw.replace(/\\n/g, '\n');
+  
+  // If the key was written on windows, normalize it to match exact cert formatting
+  if (!privateKey.includes('\n') && privateKey.includes(' ')) {
+    // If the key is inline but was not escaped correctly, preserve begin/end blocks and replace spaces with newlines
+    const header = '-----BEGIN PRIVATE KEY-----';
+    const footer = '-----END PRIVATE KEY-----';
+    if (privateKey.startsWith(header) && privateKey.endsWith(footer)) {
+      const core = privateKey.substring(header.length, privateKey.length - footer.length).trim();
+      privateKey = `${header}\n${core.replace(/\s+/g, '\n')}\n${footer}`;
+    }
+  }
 
   if (getApps().length > 0) {
     return getApp();
