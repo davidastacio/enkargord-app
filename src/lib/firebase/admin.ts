@@ -39,7 +39,7 @@ export function getAdminDb() {
 export const adminAuth = typeof window === 'undefined' ? (() => {
   try {
     return getAdminAuth();
-  } catch (e) {
+  } catch {
     return null;
   }
 })() : null;
@@ -47,7 +47,7 @@ export const adminAuth = typeof window === 'undefined' ? (() => {
 export const adminDb = typeof window === 'undefined' ? (() => {
   try {
     return getAdminDb();
-  } catch (e) {
+  } catch {
     return null;
   }
 })() : null;
