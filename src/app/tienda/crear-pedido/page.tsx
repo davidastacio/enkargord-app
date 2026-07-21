@@ -100,6 +100,7 @@ export default function CreateOrder() {
   const [observations, setObservations] = useState('');
 
   // UI States
+  const [diagCode, setDiagCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isResolvingLocation, setIsResolvingLocation] = useState(false);
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
@@ -366,17 +367,23 @@ export default function CreateOrder() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const flowId = `ORD-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    setDiagCode(flowId);
+    const t0 = performance.now();
+    console.log(`[Diagnostic] flowId=${flowId} etapa=order-submit-start timestamp=${new Date().toISOString()}`);
 
     const provName = PROVINCES.find(p => p.id === selectedProvId)?.name || '';
     const munName = MUNICIPALITIES.find(m => m.id === selectedMunId)?.name || '';
     const sectorName = isCustomSector ? sectorSearch : (SECTORS.find(s => s.id === selectedSectorId)?.name || '');
 
     if (!custName.trim() || !custPhone.trim() || !pickupDate) {
+      console.warn(`[Diagnostic] flowId=${flowId} etapa=order-validation-failed elapsed=${(performance.now() - t0).toFixed(0)}ms msg=Missing required fields`);
       alert("Por favor rellene los campos obligatorios del envío (Nombre, Teléfono y Fecha de Recogida).");
       return;
     }
 
     if (!provName || !munName || !sectorName.trim()) {
+      console.warn(`[Diagnostic] flowId=${flowId} etapa=order-validation-failed elapsed=${(performance.now() - t0).toFixed(0)}ms msg=Missing territorial fields`);
       alert("Por favor complete los campos obligatorios de Provincia, Municipio y Sector (puede escribirlo manualmente).");
       return;
     }
@@ -384,10 +391,17 @@ export default function CreateOrder() {
     if (requiresCod) {
       const parsedAmount = parseFloat(collectAmount) || 0;
       if (parsedAmount <= 0) {
+        console.warn(`[Diagnostic] flowId=${flowId} etapa=order-validation-failed elapsed=${(performance.now() - t0).toFixed(0)}ms msg=Invalid COD amount`);
         alert("El monto a recaudar debe ser un valor positivo cuando el cobro contra entrega está activo.");
         return;
       }
     }
+
+    console.log(`[Diagnostic] flowId=${flowId} etapa=order-validation-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+
+    const partialUid = profile?.uid ? `${profile.uid.slice(0, 5)}...` : 'N/A';
+    const storeId = profile?.storeId || profile?.uid || 'STORE_01';
+    console.log(`[Diagnostic] flowId=${flowId} etapa=authenticated-user-found uid=${partialUid} storeId=${storeId} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
 
     setIsLoading(true);
 
@@ -443,15 +457,29 @@ export default function CreateOrder() {
         updatedAt: new Date().toISOString()
       };
 
+      console.log(`[Diagnostic] flowId=${flowId} etapa=order-payload-created elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+      console.log(`[Diagnostic] flowId=${flowId} etapa=tracking-created tracking=${newOrder.tracking} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+
       // 1. Save to Cloud Firestore
-      await setDoc(doc(db, 'orders', newOrder.id), newOrder);
+      console.log(`[Diagnostic] flowId=${flowId} etapa=firestore-write-start storeId=${newOrder.storeId} createdByUid=${newOrder.createdByUid} tracking=${newOrder.tracking} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+
+      try {
+        await setDoc(doc(db, 'orders', newOrder.id), newOrder);
+        console.log(`[Diagnostic] flowId=${flowId} etapa=firestore-write-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+      } catch (writeErr: any) {
+        console.error(`[Diagnostic] flowId=${flowId} etapa=firestore-write-failed error=${writeErr?.code || 'unknown'} msg=${writeErr?.message} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+        throw writeErr;
+      }
 
       // 2. Synchronize Cache in LocalStorage
       const updated = [newOrder, ...currentOrders];
       localStorage.setItem('enkargord_orders', JSON.stringify(updated));
 
       triggerToast(`Guía logística #${newOrder.tracking} registrada.`);
+
+      console.log(`[Diagnostic] flowId=${flowId} etapa=redirect-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
       router.push('/tienda/pedidos');
+      console.log(`[Diagnostic] flowId=${flowId} etapa=redirect-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
     } catch (err: any) {
       console.error("Error creating order in Firestore:", err);
       alert("Error al registrar el pedido en la base de datos: " + (err.message || err));
@@ -515,6 +543,11 @@ export default function CreateOrder() {
           <p className="text-xs text-slate-400 mt-1 font-medium">
             Registra los datos de transporte bajo protección de privacidad comercial de EnkargoRD.
           </p>
+          {diagCode && (
+            <div className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest bg-white border border-[#E7E7EC] px-3 py-1.5 rounded-lg inline-block mt-2">
+              Código de diagnóstico: {diagCode}
+            </div>
+          )}
         </div>
       </div>
 
