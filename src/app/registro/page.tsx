@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { Mail, User, Phone, CheckSquare } from 'lucide-react';
 
 import { useAuth } from '@/hooks/useAuth';
+import { db } from '@/lib/firebase/client';
 
 import AuthHeader from '@/components/auth/AuthHeader';
 import AuthVisual from '@/components/auth/AuthVisual';
@@ -177,6 +178,13 @@ export default function RegisterPage() {
                   <p className="text-xs text-slate-400 font-semibold">
                     Completa tus datos para crear tu cuenta.
                   </p>
+                </div>
+
+                {/* DIAGNÓSTICO EN VIVO TEMPORAL */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[10px] font-mono text-slate-600 space-y-1">
+                  <div>🌍 Entorno: production</div>
+                  <div>🆔 Proyecto Firebase: {db?.app?.options?.projectId || 'No definido'}</div>
+                  <div>🔥 Firestore Inicializado: {db ? 'SÍ (Activo)' : 'NO (Error)'}</div>
                 </div>
 
                 <FormError message={errorMsg} />

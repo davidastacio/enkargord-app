@@ -130,14 +130,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     role: UserRole
   ): Promise<UserProfile> => {
     setLoading(true);
+    let stage = 'start';
     try {
       // 1. Create in Firebase Auth
+      stage = 'auth-create';
       const credentials = await createUserWithEmailAndPassword(auth, email, password);
       const uid = credentials.user.uid;
+      console.log("auth-user-created", { uid });
       
       let storeId = '';
       // 2. If role is Tienda, create store document first
       if (role === 'Tienda') {
+        stage = 'store-document-create';
         const storeRef = doc(collection(db, 'stores'));
         storeId = storeRef.id;
         
@@ -151,9 +155,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
+        console.log("store-document-created", { storeId });
       }
 
       // 3. Create user profile document in Firestore users/{uid}
+      stage = 'firestore-profile-start';
       const profileData: Omit<UserProfile, 'uid'> = {
         name,
         email,
@@ -164,13 +170,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
       
       await setDoc(doc(db, 'users', uid), profileData);
+      console.log("firestore-profile-created", { uid });
       
+      stage = 'session-create';
       const newProfile: UserProfile = { uid, ...profileData };
       setProfile(newProfile);
       setRole(role);
+      console.log("session-created");
+      
+      stage = 'registration-completed';
+      console.log("registration-completed");
       return newProfile;
-    } catch (error) {
+    } catch (error: any) {
       setLoading(false);
+      console.error("Registration error at stage: " + stage, {
+        stage: stage,
+        code: error.code || 'unknown',
+        message: error.message ? error.message.replace(/[^a-zA-Z0-9\s:.-]/g, '') : 'No message available'
+      });
       throw error;
     }
   };
