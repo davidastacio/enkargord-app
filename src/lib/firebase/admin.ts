@@ -34,20 +34,3 @@ export function getAdminAuth() {
 export function getAdminDb() {
   return getFirestore(getFirebaseAdminApp());
 }
-
-// Keep legacy exports for backward compatibility, wrapped safely so they don't break at import time
-export const adminAuth = typeof window === 'undefined' ? (() => {
-  try {
-    return getAdminAuth();
-  } catch {
-    return null;
-  }
-})() : null;
-
-export const adminDb = typeof window === 'undefined' ? (() => {
-  try {
-    return getAdminDb();
-  } catch {
-    return null;
-  }
-})() : null;

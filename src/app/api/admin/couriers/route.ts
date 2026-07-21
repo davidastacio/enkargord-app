@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin';
 
 export async function POST(request: Request) {
   try {
-    if (!adminAuth || !adminDb) {
+    let adminAuth;
+    let adminDb;
+    try {
+      adminAuth = getAdminAuth();
+      adminDb = getAdminDb();
+    } catch (initErr: any) {
+      console.error('Firebase Admin SDK could not be initialized:', initErr);
       return NextResponse.json(
         { error: 'Firebase Admin SDK not initialized' },
         { status: 500 }
