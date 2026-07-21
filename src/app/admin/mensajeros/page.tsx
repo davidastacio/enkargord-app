@@ -25,6 +25,9 @@ import {
   Settings,
 } from 'lucide-react';
 import { DEFAULT_COURIERS, type Courier, type CourierStatus } from '@/data/courier';
+import { collection, query, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 const STATUS_CONFIG: Record<CourierStatus, { label: string; color: string; bg: string; dot: string }> = {
   available: { label: 'Disponible',        color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', dot: 'bg-emerald-500' },
@@ -54,22 +57,57 @@ const EMPTY_FORM: FormState = {
 };
 
 export default function MensajerosPage() {
+  const { profile } = useAuth();
   const [couriers, setCouriers] = useState<Courier[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Courier | null>(null);
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
   const [toast, setToast] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<CourierStatus | 'all'>('all');
+  const [isLoading, setIsLoading] = useState(false);
 
+  // States for showing temporary credentials
+  const [showCredsModal, setShowCredsModal] = useState(false);
+  const [credsData, setCredsData] = useState<{ email: string; pass: string } | null>(null);
+
+  // Load from Firestore in real-time
   useEffect(() => {
-    const stored = localStorage.getItem('enkargord_couriers');
-    setCouriers(stored ? JSON.parse(stored) : DEFAULT_COURIERS);
-  }, []);
+    const q = query(collection(db, 'couriers'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const firestoreCouriers = snapshot.docs.map((docSnap) => {
+        const o = docSnap.data();
+        return {
+          id: o.id || docSnap.id,
+          name: o.fullName || 'Motorista',
+          cedula: o.identificationNumber || '',
+          phone: o.phone || '',
+          email: o.email || '',
+          address: o.address || '',
+          licenseNumber: o.licenseNumber || '',
+          vehicle: {
+            type: o.vehicleType || 'motocicleta',
+            plate: o.vehiclePlate || 'N/A'
+          },
+          assignedZone: o.assignedZone || '',
+          status: o.status || 'available',
+          active: o.active !== undefined ? o.active : true,
+          suspended: o.status === 'suspended',
+          createdAt: o.createdAt || new Date().toISOString(),
+          cashInStreet: o.cashInStreet || 0,
+          commissionType: o.commissionType || 'fixed',
+          commissionValue: o.commissionValue || 100
+        };
+      });
+      setCouriers(firestoreCouriers as Courier[]);
+    }, (error) => {
+      console.error("Error listening to couriers in admin panel:", error);
+      // Fallback
+      const stored = localStorage.getItem('enkargord_couriers');
+      setCouriers(stored ? JSON.parse(stored) : DEFAULT_COURIERS);
+    });
 
-  const save = (updated: Courier[]) => {
-    setCouriers(updated);
-    localStorage.setItem('enkargord_couriers', JSON.stringify(updated));
-  };
+    return () => unsubscribe();
+  }, []);
 
   const triggerToast = (msg: string) => {
     setToast(msg);
@@ -100,74 +138,141 @@ export default function MensajerosPage() {
     setShowModal(true);
   };
 
-  const handleSubmit = () => {
-    if (!form.name || !form.phone || !form.vehiclePlate) {
-      triggerToast('Nombre, teléfono y placa son requeridos.');
+  const handleSubmit = async () => {
+    if (!form.name || !form.phone || !form.vehiclePlate || !form.email) {
+      triggerToast('Nombre, teléfono, placa y correo electrónico son requeridos.');
       return;
     }
 
-    if (editing) {
-      const updated = couriers.map((c) =>
-        c.id === editing.id
-          ? {
-              ...c,
-              name: form.name!,
-              cedula: form.cedula,
-              phone: form.phone!,
+    setIsLoading(true);
+
+    try {
+      if (editing) {
+        // Update existing courier in Firestore
+        const courierRef = doc(db, 'couriers', editing.id);
+        await updateDoc(courierRef, {
+          fullName: form.name,
+          identificationNumber: form.cedula,
+          phone: form.phone,
+          email: form.email,
+          address: form.address,
+          licenseNumber: form.licenseNumber,
+          vehicleType: form.vehicleType,
+          vehiclePlate: form.vehiclePlate,
+          assignedZone: form.assignedZone,
+          commissionType: form.commissionType,
+          commissionValue: Number(form.commissionValue),
+          updatedAt: new Date().toISOString()
+        });
+
+        // Also update users/{uid} corresponding info if it exists
+        if (editing.id) {
+          const qUser = doc(db, 'users', editing.id);
+          try {
+            await updateDoc(qUser, {
+              fullName: form.name,
+              phone: form.phone,
               email: form.email,
-              address: form.address,
-              licenseNumber: form.licenseNumber,
-              vehicle: { ...c.vehicle, type: form.vehicleType, plate: form.vehiclePlate },
-              assignedZone: form.assignedZone,
-              commissionType: form.commissionType as Courier['commissionType'],
-              commissionValue: Number(form.commissionValue),
-            }
-          : c
-      );
-      save(updated);
-      triggerToast(`Motorista "${form.name}" actualizado.`);
-    } else {
-      const newCourier: Courier = {
-        id: `COU-${Date.now()}`,
-        name: form.name!,
-        cedula: form.cedula,
-        phone: form.phone!,
-        email: form.email,
-        address: form.address,
-        licenseNumber: form.licenseNumber,
-        vehicle: { type: form.vehicleType, plate: form.vehiclePlate },
-        assignedZone: form.assignedZone,
-        status: 'available',
-        commissionType: form.commissionType as Courier['commissionType'],
-        commissionValue: Number(form.commissionValue),
-        active: true,
-        suspended: false,
-        createdAt: new Date().toISOString(),
-        cashInStreet: 0,
-      };
-      save([...couriers, newCourier]);
-      triggerToast(`Motorista "${newCourier.name}" registrado.`);
+              updatedAt: new Date().toISOString()
+            });
+          } catch (e) {
+            console.log("No users doc found with ID matching courier id: ", editing.id);
+          }
+        }
+
+        triggerToast(`Motorista "${form.name}" actualizado.`);
+        setShowModal(false);
+      } else {
+        // Create new courier via secure backend API endpoint (Firebase Admin)
+        const tempPassword = Math.random().toString(36).slice(-8) + 'A1!';
+        const response = await fetch('/api/admin/couriers', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fullName: form.name,
+            email: form.email,
+            phone: form.phone,
+            identificationNumber: form.cedula,
+            password: tempPassword,
+            vehicleType: form.vehicleType,
+            vehiclePlate: form.vehiclePlate,
+            assignedZone: form.assignedZone,
+            createdByUid: profile?.uid || 'ADMIN',
+          }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          // Open credentials modal
+          setCredsData({
+            email: form.email,
+            pass: tempPassword,
+          });
+          setShowCredsModal(true);
+          triggerToast(`Motorista "${form.name}" registrado.`);
+          setShowModal(false);
+        } else {
+          alert(`Error al registrar motorista: ${data.error}`);
+        }
+      }
+    } catch (error: any) {
+      console.error("Error submitting courier form:", error);
+      alert(`Ocurrió un error inesperado: ${error.message || error}`);
+    } finally {
+      setIsLoading(false);
     }
-
-    setShowModal(false);
   };
 
-  const toggleActive = (id: string) => {
-    const updated = couriers.map((c) =>
-      c.id === id ? { ...c, active: !c.active, suspended: c.active ? true : false } : c
-    );
-    save(updated);
+  const toggleActive = async (id: string) => {
+    const courier = couriers.find(c => c.id === id);
+    if (!courier) return;
+
+    try {
+      const nextActive = !courier.active;
+      await updateDoc(doc(db, 'couriers', id), {
+        active: nextActive,
+        status: nextActive ? 'available' : 'offline',
+        updatedAt: new Date().toISOString()
+      });
+      triggerToast(`Motorista ${courier.name} está ahora ${nextActive ? 'Activo' : 'Inactivo'}.`);
+    } catch (error) {
+      console.error("Error toggling active status in Firestore:", error);
+    }
   };
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     if (!confirm(`¿Dar de baja a ${name}?`)) return;
-    save(couriers.filter((c) => c.id !== id));
-    triggerToast(`Motorista "${name}" dado de baja.`);
+
+    try {
+      await deleteDoc(doc(db, 'couriers', id));
+      
+      // Try to delete corresponding users doc too
+      try {
+        await deleteDoc(doc(db, 'users', id));
+      } catch (err) {
+        // document might not exist
+      }
+
+      triggerToast(`Motorista "${name}" dado de baja.`);
+    } catch (error) {
+      console.error("Error deleting courier in Firestore:", error);
+      alert("Error al dar de baja al motorista.");
+    }
   };
 
-  const changeStatus = (id: string, status: CourierStatus) => {
-    const updated = couriers.map((c) => (c.id === id ? { ...c, status } : c));
-    save(updated);
+  const changeStatus = async (id: string, status: CourierStatus) => {
+    try {
+      await updateDoc(doc(db, 'couriers', id), {
+        status,
+        updatedAt: new Date().toISOString()
+      });
+      triggerToast(`Estado cambiado a ${status}.`);
+    } catch (error) {
+      console.error("Error updating courier status in Firestore:", error);
+    }
   };
 
   const filtered = couriers.filter((c) => filterStatus === 'all' || c.status === filterStatus);
@@ -444,12 +549,42 @@ export default function MensajerosPage() {
               </button>
               <button
                 onClick={handleSubmit}
-                className="flex-1 py-3 bg-[#d3121a] hover:bg-[#b00f14] text-white rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 shadow-md shadow-red-100"
+                disabled={isLoading}
+                className="flex-1 py-3 bg-[#d3121a] hover:bg-[#b00f14] text-white rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 shadow-md shadow-red-100 disabled:opacity-50"
               >
-                <Save size={15} />
-                {editing ? 'Guardar cambios' : 'Registrar'}
+                {isLoading ? 'Guardando...' : (
+                  <>
+                    <Save size={15} />
+                    {editing ? 'Guardar cambios' : 'Registrar'}
+                  </>
+                )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de Credenciales Temporales ──────────────── */}
+      {showCredsModal && credsData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <h3 className="font-extrabold text-slate-900 text-base">🔑 Credenciales del Motorista</h3>
+            <p className="text-xs text-slate-500">
+              Copia estas credenciales temporales. Por seguridad, no volverán a mostrarse en pantalla.
+            </p>
+            <div className="bg-slate-50 border border-[#E7E7EC] rounded-xl p-4 space-y-2 text-xs font-mono">
+              <div><span className="font-bold text-slate-400">Usuario / Correo:</span> {credsData.email}</div>
+              <div><span className="font-bold text-slate-400">Contraseña temporal:</span> {credsData.pass}</div>
+            </div>
+            <button
+              onClick={() => {
+                setShowCredsModal(false);
+                setCredsData(null);
+              }}
+              className="w-full py-3 bg-[#d3121a] hover:bg-[#b00f14] text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-2"
+            >
+              Entendido, credenciales copiadas
+            </button>
           </div>
         </div>
       )}

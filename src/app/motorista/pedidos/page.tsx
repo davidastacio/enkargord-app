@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   Package,
   Phone,
@@ -16,6 +17,9 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { DEFAULT_ORDERS, type CourierOrder, type OrderStatus, buildWhatsAppUrl, DEFAULT_WHATSAPP_TEMPLATES } from '@/data/courier';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: string }> = {
   assigned:          { label: 'Asignado',            color: 'text-slate-700',   bg: 'bg-slate-100' },
@@ -79,18 +83,74 @@ function printLabel(order: CourierOrder) {
 }
 
 export default function PedidosPage() {
+  const { profile } = useAuth() as any;
   const [orders, setOrders] = useState<CourierOrder[]>([]);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all'>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [templateKey, setTemplateKey] = useState(0);
 
+  // Load from Firestore in real-time matching courierId
   useEffect(() => {
-    const stored = localStorage.getItem('enkargord_courier_orders');
-    setOrders(stored ? JSON.parse(stored) : DEFAULT_ORDERS);
-  }, []);
+    if (profile?.courierId) {
+      const q = query(collection(db, 'orders'), where('courierId', '==', profile.courierId));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const firestoreOrders = snapshot.docs.map((docSnap) => {
+          const o = docSnap.data();
+          const mappedStatus = o.status === 'customer_unreachable' ? 'no_answer' : o.status;
+          return {
+            id: o.id || docSnap.id,
+            trackingId: o.tracking || docSnap.id,
+            status: mappedStatus as OrderStatus,
+            storeId: o.storeId || 'STORE_01',
+            storeName: o.storeName || 'Tienda Enkargo',
+            courierId: o.courierId || '',
+            courierName: o.courierName || '',
+            createdAt: o.createdAt || new Date().toISOString(),
+            customer: {
+              name: o.customerName || 'Cliente',
+              phone: o.customerPhone || '',
+              email: o.customerEmail || ''
+            },
+            deliveryAddress: {
+              addressLine: o.formattedAddress || o.street || '',
+              provinceId: o.provinceId || '',
+              provinceName: o.provinceName || '',
+              municipalityId: o.municipalityId || '',
+              municipalityName: o.municipalityName || '',
+              sectorName: o.sectorName || '',
+              fullAddress: o.formattedAddress || o.street || '',
+              reference: o.reference || '',
+              coordinates: {
+                lat: o.latitude || 18.4795,
+                lng: o.longitude || -69.9326
+              }
+            },
+            amountCollected: o.collectionAmount || 0,
+            fulfillment: {
+              required: o.requiresFulfillment || false
+            },
+            financials: {
+              orderCollectionAmount: o.collectionAmount || 0,
+              courierCommission: 100, // Comisión simulada
+              storeProductAmount: o.collectionAmount || 0,
+            }
+          };
+        });
+        setOrders(firestoreOrders as any);
+      }, (error) => {
+        console.error("Error listening to courier orders in page:", error);
+      });
 
-  const myOrders = orders.filter((o) => o.courierId === 'COU-001');
+      return () => unsubscribe();
+    } else {
+      // Fallback
+      const stored = localStorage.getItem('enkargord_courier_orders');
+      if (stored) setOrders(JSON.parse(stored));
+    }
+  }, [profile]);
+
+  const myOrders = orders; // Ya vienen filtrados desde Firestore
   const filtered = myOrders.filter((o) => {
     const matchSearch =
       o.customer.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -173,7 +233,7 @@ export default function PedidosPage() {
           const waUrl = buildWhatsAppUrl(
             order.customer.phone,
             template.template,
-            { motorista: 'Carlos Martínez', tienda: order.storeName, tracking: order.trackingId }
+            { motorista: profile?.fullName || 'Motorista', tienda: order.storeName, tracking: order.trackingId }
           );
 
           return (
@@ -245,6 +305,16 @@ export default function PedidosPage() {
                 >
                   <Printer size={13} /> Label
                 </button>
+              </div>
+
+              {/* View order detail link */}
+              <div className="mt-2">
+                <Link
+                  href={`/motorista/pedidos/${order.id}`}
+                  className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 hover:bg-slate-200 border border-[#E7E7EC] rounded-xl text-xs font-extrabold text-slate-700 transition-all"
+                >
+                  Ver detalle operativo →
+                </Link>
               </div>
 
               {/* WhatsApp template selector */}

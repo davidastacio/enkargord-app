@@ -25,8 +25,9 @@ import {
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import MapComponent from '@/components/MapComponent';
-import { collection, query, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, setDoc, updateDoc, deleteDoc, addDoc, increment } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 // TypeScript Types
 interface Financials {
@@ -66,11 +67,12 @@ interface Order {
 
 interface Courier {
   id: string;
+  userUid?: string;
   name: string;
   phone: string;
   vehicle: string;
   plate: string;
-  status: 'Disponible' | 'En ruta' | 'Offline';
+  status: 'Disponible' | 'En ruta' | 'Offline' | string;
 }
 
 // Initial Data Constants
@@ -172,6 +174,7 @@ const DEFAULT_COURIERS: Courier[] = [
 ];
 
 export default function AdminDashboard() {
+  const { profile } = useAuth();
   // Navigation State
   const [activeTab, setActiveTab] = useState<'dispatch' | 'fleet' | 'settlement'>('dispatch');
   const [activeSidebarMenu, setActiveSidebarMenu] = useState<'dashboard' | 'fleet' | 'settlement' | 'config'>('dashboard');
@@ -251,13 +254,30 @@ export default function AdminDashboard() {
       }
     });
 
-    const localCouriers = localStorage.getItem('enkargord_couriers');
-    if (localCouriers) {
-      setCouriers(JSON.parse(localCouriers));
-    } else {
-      setCouriers(DEFAULT_COURIERS);
-      localStorage.setItem('enkargord_couriers', JSON.stringify(DEFAULT_COURIERS));
-    }
+    const qc = query(collection(db, 'couriers'));
+    const unsubscribeCouriers = onSnapshot(qc, (snapshot) => {
+      const firestoreCouriers = snapshot.docs.map((docSnap) => {
+        const o = docSnap.data();
+        return {
+          id: o.id || docSnap.id,
+          userUid: o.userUid,
+          name: o.fullName || 'Motorista',
+          phone: o.phone || '',
+          vehicle: o.vehicleType || 'motocicleta',
+          plate: o.vehiclePlate || 'N/A',
+          status: o.status === 'available' ? 'Disponible' : o.status === 'on_route' ? 'En ruta' : 'Offline'
+        };
+      });
+      setCouriers(firestoreCouriers as Courier[]);
+    }, (error) => {
+      console.error("Error reading Firestore couriers in Admin dashboard:", error);
+      const localCouriers = localStorage.getItem('enkargord_couriers');
+      if (localCouriers) {
+        setCouriers(JSON.parse(localCouriers));
+      } else {
+        setCouriers(DEFAULT_COURIERS);
+      }
+    });
 
     // Read active tab from query parameters
     const params = new URLSearchParams(window.location.search);
@@ -273,7 +293,10 @@ export default function AdminDashboard() {
       setActiveSidebarMenu('dashboard');
     }
 
-    return () => unsubscribeOrders();
+    return () => {
+      unsubscribeOrders();
+      unsubscribeCouriers();
+    };
   }, []);
 
   // Show dynamic toast helper
@@ -307,24 +330,78 @@ export default function AdminDashboard() {
     if (!courierName) return;
 
     try {
-      // 1. Find the courier document id or update the order document directly
+      const selectedCourier = couriers.find(c => c.name === courierName);
+      const courierId = selectedCourier ? selectedCourier.id : null;
+      const courierUid = selectedCourier ? selectedCourier.userUid : null;
+
+      // Find if order already has an assigned courier (Reassignment check)
+      const targetOrder = orders.find(o => o.id === orderId);
+      const previousCourierName = targetOrder?.courierName || null;
+      const isReassignment = previousCourierName && previousCourierName !== 'No asignado';
+
+      // 1. Update order document in Firestore
       await updateDoc(doc(db, 'orders', orderId), {
+        courierId: courierId,
+        courierUid: courierUid,
         courierName: courierName,
-        status: 'in_transit',
+        assignedAt: new Date().toISOString(),
+        assignedByUid: profile?.uid || 'ADMIN',
+        status: 'assigned',
         updatedAt: new Date().toISOString()
       });
 
-      const updatedCouriers = couriers.map(c => {
-        if (c.name === courierName) {
-          return { ...c, status: 'En ruta' as const };
+      // 2. Increment new courier's active order count in Firestore
+      if (courierId) {
+        await updateDoc(doc(db, 'couriers', courierId), {
+          currentOrderCount: increment(1),
+          status: 'on_route',
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      // Decrement previous courier's active order count if reassigning
+      if (isReassignment) {
+        const prevCourier = couriers.find(c => c.name === previousCourierName);
+        if (prevCourier?.id) {
+          await updateDoc(doc(db, 'couriers', prevCourier.id), {
+            currentOrderCount: increment(-1),
+            updatedAt: new Date().toISOString()
+          });
         }
-        return c;
+      }
+
+      // 3. Create subcollection event log inside orders/{orderId}/events
+      await addDoc(collection(db, 'orders', orderId, 'events'), {
+        type: isReassignment ? 'courier_reassigned' : 'courier_assigned',
+        previousStatus: targetOrder?.status || 'pending',
+        newStatus: 'assigned',
+        actorUid: profile?.uid || 'ADMIN',
+        actorRole: 'admin',
+        courierId: courierId,
+        note: isReassignment 
+          ? `Reasignado de ${previousCourierName} a ${courierName}`
+          : `Asignado a ${courierName}`,
+        createdAt: new Date().toISOString()
       });
 
-      setCouriers(updatedCouriers);
-      localStorage.setItem('enkargord_couriers', JSON.stringify(updatedCouriers));
+      // 4. Create Audit Log
+      const auditId = `AUD-${Date.now()}`;
+      await setDoc(doc(db, 'audit_logs', auditId), {
+        id: auditId,
+        action: isReassignment ? 'reassign_order' : 'assign_order',
+        actorUid: profile?.uid || 'ADMIN',
+        actorRole: 'admin',
+        targetType: 'order',
+        targetId: orderId,
+        metadata: {
+          courierId,
+          courierName,
+          previousCourierName: isReassignment ? previousCourierName : undefined
+        },
+        createdAt: new Date().toISOString()
+      });
 
-      triggerToast(`Pedido #${orderId} asignado y despachado con ${courierName}.`);
+      triggerToast(`Pedido #${orderId} asignado a ${courierName}.`);
     } catch (error) {
       console.error("Error assigning courier in Firestore:", error);
       alert("Error al asignar el repartidor en la base de datos.");

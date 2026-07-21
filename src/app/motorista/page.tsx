@@ -28,6 +28,9 @@ import {
   buildWhatsAppUrl,
   DEFAULT_WHATSAPP_TEMPLATES,
 } from '@/data/courier';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
   assigned:          'Asignado',
@@ -44,20 +47,76 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
 };
 
 export default function MotoristaHome() {
+  const { profile } = useAuth() as any;
   const [orders, setOrders] = useState<CourierOrder[]>([]);
   const [routeActive, setRouteActive] = useState(false);
 
+  // Load from Firestore in real-time matching courierId
   useEffect(() => {
-    const stored = localStorage.getItem('enkargord_courier_orders');
-    if (stored) {
-      setOrders(JSON.parse(stored));
+    if (profile?.courierId) {
+      const q = query(collection(db, 'orders'), where('courierId', '==', profile.courierId));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const firestoreOrders = snapshot.docs.map((docSnap) => {
+          const o = docSnap.data();
+          const mappedStatus = o.status === 'customer_unreachable' ? 'no_answer' : o.status;
+          return {
+            id: o.id || docSnap.id,
+            trackingId: o.tracking || docSnap.id,
+            status: mappedStatus as OrderStatus,
+            storeId: o.storeId || 'STORE_01',
+            storeName: o.storeName || 'Tienda Enkargo',
+            courierId: o.courierId || '',
+            courierName: o.courierName || '',
+            createdAt: o.createdAt || new Date().toISOString(),
+            customer: {
+              name: o.customerName || 'Cliente',
+              phone: o.customerPhone || '',
+              email: o.customerEmail || ''
+            },
+            deliveryAddress: {
+              addressLine: o.formattedAddress || o.street || '',
+              provinceId: o.provinceId || '',
+              provinceName: o.provinceName || '',
+              municipalityId: o.municipalityId || '',
+              municipalityName: o.municipalityName || '',
+              sectorName: o.sectorName || '',
+              city: o.municipalityName ? `${o.sectorName} (${o.municipalityName})` : '',
+              fullAddress: o.formattedAddress || o.street || '',
+              coordinates: {
+                lat: o.latitude || 18.4795,
+                lng: o.longitude || -69.9326
+              }
+            },
+            amountCollected: o.collectionAmount || 0,
+            fulfillment: {
+              required: o.requiresFulfillment || false
+            },
+            financials: {
+              orderCollectionAmount: o.collectionAmount || 0,
+              courierCommission: 100, // Comisión simulada
+              storeProductAmount: o.collectionAmount || 0,
+            }
+          };
+        });
+        setOrders(firestoreOrders as any);
+      }, (error) => {
+        console.error("Error loading courier orders from Firestore:", error);
+      });
+
+      const routeState = localStorage.getItem('enkargord_route_active');
+      if (routeState === 'true') setRouteActive(true);
+
+      return () => unsubscribe();
     } else {
-      setOrders(DEFAULT_ORDERS);
-      localStorage.setItem('enkargord_courier_orders', JSON.stringify(DEFAULT_ORDERS));
+      // Fallback local storage
+      const stored = localStorage.getItem('enkargord_courier_orders');
+      if (stored) {
+        setOrders(JSON.parse(stored));
+      }
+      const routeState = localStorage.getItem('enkargord_route_active');
+      if (routeState === 'true') setRouteActive(true);
     }
-    const routeState = localStorage.getItem('enkargord_route_active');
-    if (routeState === 'true') setRouteActive(true);
-  }, []);
+  }, [profile]);
 
   const toggleRoute = () => {
     const next = !routeActive;
@@ -66,9 +125,9 @@ export default function MotoristaHome() {
   };
 
   // KPI calculations
-  const myOrders = orders.filter((o) => o.courierId === 'COU-001');
+  const myOrders = orders; // Ya vienen filtrados desde la base de datos para este courier
   const assigned       = myOrders.filter((o) => o.status === 'assigned').length;
-  const onRoute        = myOrders.filter((o) => o.status === 'on_route').length;
+  const onRoute        = myOrders.filter((o) => o.status === 'on_route' || o.status === 'picked_up').length;
   const delivered      = myOrders.filter((o) => o.status === 'delivered').length;
   const noAnswer       = myOrders.filter((o) => o.status === 'no_answer').length;
   const pending        = myOrders.filter((o) => ['assigned', 'picked_up', 'on_route', 'next_delivery'].includes(o.status)).length;
@@ -117,7 +176,7 @@ export default function MotoristaHome() {
 
       {/* ── Greeting ─────────────────────────── */}
       <div>
-        <h2 className="text-xl font-extrabold text-slate-900">¡Buenos días, Carlos! 👋</h2>
+        <h2 className="text-xl font-extrabold text-slate-900">¡Buenos días, {profile?.fullName?.split(' ')[0] || 'Motorista'}! 👋</h2>
         <p className="text-sm text-slate-500 mt-1">
           {new Date().toLocaleDateString('es-DO', { weekday: 'long', day: 'numeric', month: 'long' })}
         </p>
@@ -202,8 +261,8 @@ export default function MotoristaHome() {
               <Zap size={16} className="text-[#d3121a]" />
               Próxima entrega
             </h3>
-            <Link href="/motorista/ruta" className="text-xs font-bold text-[#d3121a] flex items-center gap-1 hover:gap-2 transition-all">
-              Ver ruta <ChevronRight size={14} />
+            <Link href={`/motorista/pedidos/${nextOrder.id}`} className="text-xs font-bold text-[#d3121a] flex items-center gap-1 hover:gap-2 transition-all">
+              Ver pedido <ChevronRight size={14} />
             </Link>
           </div>
 
@@ -238,7 +297,7 @@ export default function MotoristaHome() {
               href={buildWhatsAppUrl(
                 nextOrder.customer.phone,
                 DEFAULT_WHATSAPP_TEMPLATES[0].template,
-                { motorista: 'Carlos Martínez', tienda: nextOrder.storeName, tracking: nextOrder.trackingId }
+                { motorista: profile?.fullName || 'Motorista', tienda: nextOrder.storeName, tracking: nextOrder.trackingId }
               )}
               target="_blank"
               rel="noreferrer"
