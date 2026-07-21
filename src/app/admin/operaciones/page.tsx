@@ -10,23 +10,19 @@ import {
   Plus,
   Trash2,
   Save,
-  X,
   Package2,
-  Truck,
   LogOut,
-  Percent,
-  Hash,
-  Globe,
-  RefreshCw,
   CheckCircle,
+  Loader2,
 } from 'lucide-react';
 import {
   DEFAULT_PRICING,
   type PricingSettings,
   type SettlementBeneficiary,
   type ZoneSurcharge,
-  type CalculationType,
 } from '@/data/courier';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
 
 const PACKAGING_LABELS: Record<string, string> = {
   sobre:               'Sobre',
@@ -40,185 +36,209 @@ const PACKAGING_LABELS: Record<string, string> = {
 
 export default function OperacionesPage() {
   const [pricing, setPricing] = useState<PricingSettings>(DEFAULT_PRICING);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [newBeneficiary, setNewBeneficiary] = useState<Partial<SettlementBeneficiary>>({
     name: '', calculationType: 'fixed', fixedAmount: 50, percentage: 0, active: true,
   });
-  const [newZone, setNewZone] = useState<Partial<ZoneSurcharge>>({ provinceName: '', surcharge: 0 });
 
   useEffect(() => {
-    const stored = localStorage.getItem('enkargord_pricing');
-    if (stored) setPricing(JSON.parse(stored));
+    async function loadPricingFromFirestore() {
+      try {
+        const ref = doc(db, 'settings', 'pricing');
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          setPricing(snap.data() as PricingSettings);
+        }
+      } catch (err) {
+        console.error("Error loading pricing settings from Firestore:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadPricingFromFirestore();
   }, []);
-
-  const savePricing = (updated: PricingSettings) => {
-    const withDate = { ...updated, lastUpdated: new Date().toISOString() };
-    setPricing(withDate);
-    localStorage.setItem('enkargord_pricing', JSON.stringify(withDate));
-  };
 
   const triggerToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleSave = () => {
-    savePricing(pricing);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-    triggerToast('⚙️ Configuración guardada correctamente.');
+  const handleSave = async () => {
+    setSaving(true);
+    const withDate = { ...pricing, lastUpdated: new Date().toISOString() };
+    try {
+      await setDoc(doc(db, 'settings', 'pricing'), withDate);
+      setPricing(withDate);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      triggerToast('⚙️ Configuración guardada correctamente en Firestore.');
+    } catch (err) {
+      console.error("Error saving pricing to Firestore:", err);
+      triggerToast('❌ Error al guardar en la base de datos.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const addBeneficiary = () => {
+  const handleAddBeneficiary = () => {
     if (!newBeneficiary.name) return;
-    const b: SettlementBeneficiary = {
-      id: `BEN-${Date.now()}`,
-      name: newBeneficiary.name!,
-      calculationType: newBeneficiary.calculationType as CalculationType,
-      fixedAmount: newBeneficiary.fixedAmount ?? 0,
-      percentage: newBeneficiary.percentage ?? 0,
+    const item: SettlementBeneficiary = {
+      id: `ben_${Date.now()}`,
+      name: newBeneficiary.name,
+      calculationType: newBeneficiary.calculationType || 'fixed',
+      fixedAmount: Number(newBeneficiary.fixedAmount) || 0,
+      percentage: Number(newBeneficiary.percentage) || 0,
       active: true,
     };
-    setPricing((p) => ({ ...p, beneficiaries: [...p.beneficiaries, b] }));
+    const updated = { ...pricing, beneficiaries: [...(pricing.beneficiaries || []), item] };
+    setPricing(updated);
     setNewBeneficiary({ name: '', calculationType: 'fixed', fixedAmount: 50, percentage: 0, active: true });
-    triggerToast(`Beneficiario "${b.name}" agregado.`);
+    triggerToast(`Beneficiario "${item.name}" agregado.`);
   };
 
-  const removeBeneficiary = (id: string) => {
-    setPricing((p) => ({ ...p, beneficiaries: p.beneficiaries.filter((b) => b.id !== id) }));
-  };
-
-  const toggleBeneficiary = (id: string) => {
-    setPricing((p) => ({
-      ...p,
-      beneficiaries: p.beneficiaries.map((b) => (b.id === id ? { ...b, active: !b.active } : b)),
-    }));
-  };
-
-  const addZoneSurcharge = () => {
-    if (!newZone.provinceName) return;
-    const z: ZoneSurcharge = {
-      provinceId: newZone.provinceName!.toLowerCase().replace(/\s+/g, '_'),
-      provinceName: newZone.provinceName!,
-      surcharge: newZone.surcharge ?? 0,
+  const handleRemoveBeneficiary = (id: string) => {
+    const updated = {
+      ...pricing,
+      beneficiaries: (pricing.beneficiaries || []).filter((b) => b.id !== id),
     };
-    setPricing((p) => ({ ...p, zoneSurcharges: [...p.zoneSurcharges, z] }));
-    setNewZone({ provinceName: '', surcharge: 0 });
-    triggerToast(`Recargo de zona "${z.provinceName}" agregado.`);
+    setPricing(updated);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#F8F9FB] flex items-center justify-center font-sans">
+        <div className="flex items-center gap-3 text-slate-500 font-bold text-sm">
+          <Loader2 size={24} className="animate-spin text-[#d3121a]" />
+          Cargando configuración de operaciones...
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#F8F9FB] font-sans text-slate-800 antialiased">
-
+    <div className="min-h-screen bg-[#F8F9FB] flex font-sans text-slate-800 antialiased">
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-[9999] bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-3">
-          <div className="w-2 h-2 bg-emerald-500 rounded-full" />
-          <span className="text-sm font-medium">{toast}</span>
+        <div className="fixed bottom-6 right-6 z-[9999] bg-slate-900 text-white px-5 py-3 rounded-xl shadow-xl flex items-center gap-3 text-sm font-semibold">
+          <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse" />
+          {toast}
         </div>
       )}
 
       {/* Sidebar */}
-      <aside className="w-[260px] bg-white border-r border-[#E7E7EC] flex flex-col fixed top-0 bottom-0 left-0 z-40">
-        <div className="p-4 border-b border-[#E7E7EC] flex items-center justify-center">
-          <div className="relative w-[200px] h-16">
-            <Image src="/logo.png" alt="EnkargoRD" fill className="object-contain object-center" priority />
+      <aside className="w-[280px] bg-white border-r border-[#E7E7EC] flex flex-col justify-between fixed top-0 bottom-0 left-0 z-40">
+        <div>
+          <div className="p-4 border-b border-[#E7E7EC] flex items-center justify-center">
+            <div className="relative w-[270px] h-24">
+              <Image src="/logo.png" alt="EnkargoRD" fill className="object-contain object-center" priority />
+            </div>
           </div>
-        </div>
-        <nav className="p-3 space-y-1 flex-1">
-          {[
-            { href: '/admin',             icon: Package2, label: 'Dashboard Admin' },
-            { href: '/admin/mensajeros',  icon: Users,    label: 'Mensajeros' },
-            { href: '/admin/operaciones', icon: Settings, label: 'Configuración' },
-            { href: '/admin/mis-entregas',icon: Truck,    label: 'Modo Repartidor' },
-          ].map(({ href, icon: Icon, label }) => (
-            <Link
-              key={href}
-              href={href}
-              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-all text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            >
-              <Icon size={17} />
-              {label}
+          <nav className="p-4 space-y-1">
+            <Link href="/admin" className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
+              <Package2 size={18} /> Dashboard Admin
             </Link>
-          ))}
-        </nav>
+            <Link href="/admin/usuarios" className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
+              <Users size={18} /> Usuarios Registrados
+            </Link>
+            <Link href="/admin/operaciones" className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold bg-[#d3121a]/5 text-[#d3121a]">
+              <Settings size={18} /> Configuración Tarifas
+            </Link>
+          </nav>
+        </div>
         <div className="p-4 border-t border-[#E7E7EC]">
-          <Link href="/" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all">
-            <LogOut size={16} /> Cerrar sesión
+          <Link href="/" className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all">
+            <LogOut size={16} /> Salir de Admin
           </Link>
         </div>
       </aside>
 
-      {/* Main */}
-      <main className="pl-[260px] min-h-screen flex flex-col">
+      {/* Main Content */}
+      <main className="flex-grow pl-[280px] min-h-screen flex flex-col">
+        {/* Top Header */}
         <header className="bg-white border-b border-[#E7E7EC] px-8 py-5 flex items-center justify-between sticky top-0 z-30">
           <div>
-            <h1 className="text-xl font-extrabold text-slate-900">Configuración de Operaciones</h1>
-            <p className="text-xs text-slate-400 mt-0.5">Tarifas, comisiones y beneficiarios de liquidación</p>
+            <h1 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+              <Settings size={20} className="text-[#d3121a]" /> Configuración de Tarifas y Operación
+            </h1>
+            <p className="text-xs text-slate-400 mt-1 font-medium">
+              Ajusta costos de envío, empaques y comisiones directamente en Firestore.
+            </p>
           </div>
           <button
             onClick={handleSave}
-            className={`flex items-center gap-2 font-bold text-xs py-3 px-5 rounded-xl shadow-md transition-all ${
+            disabled={saving}
+            className={`flex items-center gap-2 font-bold text-xs py-3 px-6 rounded-xl transition-all shadow-sm ${
               saved
-                ? 'bg-emerald-500 text-white shadow-emerald-100'
+                ? 'bg-emerald-600 text-white'
                 : 'bg-[#d3121a] hover:bg-[#b00f14] text-white shadow-red-100'
             }`}
           >
-            {saved ? <><CheckCircle size={16} /> Guardado</> : <><Save size={16} /> Guardar cambios</>}
+            {saving ? <Loader2 size={16} className="animate-spin" /> : saved ? <CheckCircle size={16} /> : <Save size={16} />}
+            {saving ? 'Guardando...' : saved ? '¡Guardado!' : 'Guardar Cambios'}
           </button>
         </header>
 
-        <div className="p-8 space-y-8 max-w-4xl">
+        <div className="p-8 space-y-8 max-w-5xl">
+          {/* Section 1: Precios Base de Envíos */}
+          <section className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                  <DollarSign size={18} className="text-[#d3121a]" /> Precios Base de Envío
+                </h3>
+                <p className="text-xs text-slate-400 font-semibold mt-0.5">
+                  Tarifas por defecto aplicadas en la creación de pedidos
+                </p>
+              </div>
+            </div>
 
-          {/* Base Tariffs */}
-          <section className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm space-y-5">
-            <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
-              <DollarSign size={15} className="text-[#d3121a]" />
-              Tarifa base de envío
-            </h3>
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
-                Costo base por entrega (RD$)
-              </label>
-              <input
-                type="number"
-                min={0}
-                value={pricing.baseShippingCost}
-                onChange={(e) => setPricing((p) => ({ ...p, baseShippingCost: parseFloat(e.target.value) || 0 }))}
-                className="w-60 px-4 py-2.5 text-lg font-extrabold border border-[#E7E7EC] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#d3121a]/20 focus:border-[#d3121a]"
-              />
-              <p className="text-xs text-slate-400 mt-2 font-medium">
-                Este es el costo mínimo de envío que se aplica a todos los pedidos, antes de recargos por zona.
-              </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block">
+                  Envío Estándar (RD$)
+                </label>
+                <input
+                  type="number"
+                  value={pricing.baseShippingCost}
+                  onChange={(e) => setPricing({ ...pricing, baseShippingCost: Number(e.target.value) })}
+                  className="w-full bg-slate-50 border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-bold focus:outline-none focus:border-[#d3121a] focus:bg-white transition-all"
+                />
+              </div>
             </div>
           </section>
 
-          {/* Fulfillment Costs */}
-          <section className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm space-y-4">
-            <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
-              <Package2 size={15} className="text-[#d3121a]" />
-              Tarifas de fulfillment por tipo de empaque
-            </h3>
+          {/* Section 2: Tarifas de Empaque */}
+          <section className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm space-y-6">
+            <div className="border-b border-slate-100 pb-4">
+              <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                <Package2 size={18} className="text-[#d3121a]" /> Precios de Empaque Adicional (Fulfillment)
+              </h3>
+              <p className="text-xs text-slate-400 font-semibold mt-0.5">
+                Define el costo adicional cobrado según el empaque seleccionado
+              </p>
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {Object.entries(pricing.fulfillmentCosts).map(([key, value]) => (
-                <div key={key}>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
-                    {PACKAGING_LABELS[key] ?? key}
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-500">RD$</span>
+              {Object.entries(pricing.fulfillmentCosts || {}).map(([key, value]) => (
+                <div key={key} className="space-y-1.5 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
+                  <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
+                    {PACKAGING_LABELS[key] || key}
+                  </span>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">RD$</span>
                     <input
                       type="number"
-                      min={0}
-                      value={value}
+                      value={Number(value)}
                       onChange={(e) =>
-                        setPricing((p) => ({
-                          ...p,
-                          fulfillmentCosts: { ...p.fulfillmentCosts, [key]: parseFloat(e.target.value) || 0 },
-                        }))
+                        setPricing({
+                          ...pricing,
+                          fulfillmentCosts: { ...pricing.fulfillmentCosts, [key]: Number(e.target.value) },
+                        })
                       }
-                      className="flex-1 px-3 py-2 text-sm font-bold border border-[#E7E7EC] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#d3121a]/20 focus:border-[#d3121a]"
+                      className="w-full pl-10 pr-3 py-2 bg-white border border-[#E7E7EC] rounded-lg text-xs font-bold focus:outline-none focus:border-[#d3121a]"
                     />
                   </div>
                 </div>
@@ -226,154 +246,100 @@ export default function OperacionesPage() {
             </div>
           </section>
 
-          {/* Beneficiaries */}
-          <section className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm space-y-4">
-            <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
-              <Users size={15} className="text-[#d3121a]" />
-              Beneficiarios de liquidación
-            </h3>
-            <p className="text-xs text-slate-400 font-medium -mt-2">
-              Configura los participantes financieros (ej. Polanco, transportadora) y su forma de cálculo.
-            </p>
+          {/* Section 3: Beneficiarios y Reparto de Comisiones */}
+          <section className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm space-y-6">
+            <div className="border-b border-slate-100 pb-4">
+              <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                <Users size={18} className="text-[#d3121a]" /> Beneficiarios de Liquidación (Reglas de Comisión)
+              </h3>
+              <p className="text-xs text-slate-400 font-semibold mt-0.5">
+                Distribución del costo de envío entre participantes del sistema
+              </p>
+            </div>
 
-            {/* Existing */}
             <div className="space-y-3">
-              {pricing.beneficiaries.map((b) => (
-                <div key={b.id} className={`flex items-center gap-4 p-4 rounded-xl border transition-all ${
-                  b.active ? 'border-[#E7E7EC] bg-white' : 'border-slate-200 bg-slate-50 opacity-60'
-                }`}>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-sm text-slate-800">{b.name}</div>
-                    <div className="text-xs text-slate-400 font-semibold mt-0.5">
-                      {b.calculationType === 'fixed'
-                        ? `RD$${b.fixedAmount} fijo por entrega`
-                        : b.calculationType === 'percentage_of_shipping'
-                        ? `${b.percentage}% del costo de envío`
-                        : `${b.percentage}% del monto total`}
+              {(pricing.beneficiaries || []).map((ben: SettlementBeneficiary) => (
+                <div key={ben.id} className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100 text-xs font-semibold">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[#d3121a]/10 text-[#d3121a] font-extrabold flex items-center justify-center text-xs">
+                      {ben.name[0]}
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-800 block">{ben.name}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {ben.calculationType === 'fixed'
+                          ? `Fijo: RD$${ben.fixedAmount}`
+                          : `Porcentaje: ${ben.percentage}%`}
+                      </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => toggleBeneficiary(b.id)}
-                      className={`p-1.5 rounded-lg text-xs font-bold transition-all ${
-                        b.active
-                          ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                          : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                      }`}
-                    >
-                      {b.active ? 'Activo' : 'Inactivo'}
-                    </button>
-                    <button
-                      onClick={() => removeBeneficiary(b.id)}
-                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Add new */}
-            <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-4 space-y-3">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Agregar beneficiario</p>
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  type="text"
-                  placeholder="Nombre del beneficiario"
-                  value={newBeneficiary.name}
-                  onChange={(e) => setNewBeneficiary((p) => ({ ...p, name: e.target.value }))}
-                  className="col-span-2 px-3 py-2.5 text-sm border border-[#E7E7EC] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#d3121a]/20 bg-white"
-                />
-                <select
-                  value={newBeneficiary.calculationType}
-                  onChange={(e) => setNewBeneficiary((p) => ({ ...p, calculationType: e.target.value as CalculationType }))}
-                  className="px-3 py-2.5 text-sm border border-[#E7E7EC] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#d3121a]/20 bg-white"
-                >
-                  <option value="fixed">Monto fijo (RD$)</option>
-                  <option value="percentage_of_shipping">% del envío</option>
-                  <option value="percentage_of_total">% del total</option>
-                </select>
-                <input
-                  type="number"
-                  min={0}
-                  placeholder={newBeneficiary.calculationType === 'fixed' ? 'Monto RD$' : 'Porcentaje %'}
-                  value={newBeneficiary.calculationType === 'fixed' ? newBeneficiary.fixedAmount : newBeneficiary.percentage}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value) || 0;
-                    setNewBeneficiary((p) =>
-                      p.calculationType === 'fixed' ? { ...p, fixedAmount: v } : { ...p, percentage: v }
-                    );
-                  }}
-                  className="px-3 py-2.5 text-sm border border-[#E7E7EC] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#d3121a]/20 bg-white"
-                />
-              </div>
-              <button
-                onClick={addBeneficiary}
-                disabled={!newBeneficiary.name}
-                className="w-full py-2.5 bg-[#d3121a] hover:bg-[#b00f14] disabled:opacity-40 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2"
-              >
-                <Plus size={15} /> Agregar beneficiario
-              </button>
-            </div>
-          </section>
-
-          {/* Zone Surcharges */}
-          <section className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm space-y-4">
-            <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
-              <Globe size={15} className="text-[#d3121a]" />
-              Recargos por zona / provincia
-            </h3>
-
-            {pricing.zoneSurcharges.length === 0 && (
-              <p className="text-xs text-slate-400 font-medium">No hay recargos por zona configurados.</p>
-            )}
-            <div className="space-y-2">
-              {pricing.zoneSurcharges.map((z, idx) => (
-                <div key={z.provinceId} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <div className="flex-1">
-                    <span className="font-bold text-sm text-slate-700">{z.provinceName}</span>
-                    <span className="ml-2 text-xs text-[#d3121a] font-bold">+RD${z.surcharge.toLocaleString()}</span>
-                  </div>
                   <button
-                    onClick={() => setPricing((p) => ({ ...p, zoneSurcharges: p.zoneSurcharges.filter((_, i) => i !== idx) }))}
-                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                    onClick={() => handleRemoveBeneficiary(ben.id)}
+                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                   >
-                    <X size={13} />
+                    <Trash2 size={16} />
                   </button>
                 </div>
               ))}
             </div>
 
-            <div className="flex gap-2">
+            {/* Add Beneficiary */}
+            <div className="pt-2 flex flex-wrap items-center gap-3">
               <input
                 type="text"
-                placeholder="Provincia"
-                value={newZone.provinceName}
-                onChange={(e) => setNewZone((p) => ({ ...p, provinceName: e.target.value }))}
-                className="flex-1 px-3 py-2.5 text-sm border border-[#E7E7EC] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#d3121a]/20"
+                placeholder="Nombre del beneficiario..."
+                value={newBeneficiary.name}
+                onChange={(e) => setNewBeneficiary({ ...newBeneficiary, name: e.target.value })}
+                className="flex-1 min-w-[200px] bg-slate-50 border border-[#E7E7EC] rounded-xl px-4 py-2 text-xs font-semibold focus:outline-none focus:border-[#d3121a]"
               />
-              <input
-                type="number"
-                min={0}
-                placeholder="RD$"
-                value={newZone.surcharge}
-                onChange={(e) => setNewZone((p) => ({ ...p, surcharge: parseFloat(e.target.value) || 0 }))}
-                className="w-28 px-3 py-2.5 text-sm border border-[#E7E7EC] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#d3121a]/20"
-              />
-              <button
-                onClick={addZoneSurcharge}
-                className="px-4 py-2.5 bg-[#d3121a] text-white rounded-xl font-bold text-sm hover:bg-[#b00f14]"
+              <select
+                value={newBeneficiary.calculationType}
+                onChange={(e) => setNewBeneficiary({ ...newBeneficiary, calculationType: e.target.value as any })}
+                className="bg-slate-50 border border-[#E7E7EC] rounded-xl px-3 py-2 text-xs font-semibold"
               >
-                <Plus size={15} />
+                <option value="fixed">Monto Fijo (RD$)</option>
+                <option value="percentage_of_shipping">Porcentaje del envío (%)</option>
+              </select>
+              {newBeneficiary.calculationType === 'fixed' ? (
+                <input
+                  type="number"
+                  placeholder="Monto RD$"
+                  value={newBeneficiary.fixedAmount}
+                  onChange={(e) => setNewBeneficiary({ ...newBeneficiary, fixedAmount: Number(e.target.value) })}
+                  className="w-28 bg-slate-50 border border-[#E7E7EC] rounded-xl px-3 py-2 text-xs font-semibold"
+                />
+              ) : (
+                <input
+                  type="number"
+                  placeholder="Porcentaje %"
+                  value={newBeneficiary.percentage}
+                  onChange={(e) => setNewBeneficiary({ ...newBeneficiary, percentage: Number(e.target.value) })}
+                  className="w-28 bg-slate-50 border border-[#E7E7EC] rounded-xl px-3 py-2 text-xs font-semibold"
+                />
+              )}
+              <button
+                onClick={handleAddBeneficiary}
+                className="bg-slate-900 text-white font-bold text-xs py-2 px-4 rounded-xl hover:bg-slate-800 transition-all flex items-center gap-1.5"
+              >
+                <Plus size={14} /> Agregar
               </button>
             </div>
           </section>
 
-          {/* Last updated */}
-          <div className="flex items-center gap-2 text-xs text-slate-400 font-semibold">
-            <RefreshCw size={12} />
-            Última actualización: {new Date(pricing.lastUpdated).toLocaleString('es-DO')}
+          {/* Save Footer */}
+          <div className="flex justify-end pt-4">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className={`flex items-center gap-2 font-extrabold text-xs py-3.5 px-8 rounded-xl transition-all shadow-md ${
+                saved
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-[#d3121a] hover:bg-[#b00f14] text-white shadow-red-100'
+              }`}
+            >
+              {saving ? <Loader2 size={16} className="animate-spin" /> : saved ? <CheckCircle size={16} /> : <Save size={16} />}
+              {saving ? 'Guardando...' : saved ? '¡Configuración guardada!' : 'Guardar Todos los Cambios'}
+            </button>
           </div>
         </div>
       </main>

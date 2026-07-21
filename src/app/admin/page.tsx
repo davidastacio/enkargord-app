@@ -515,37 +515,47 @@ export default function AdminDashboard() {
   };
 
   // Fleet Add Courier form handler
-  const handleCreateCourierSubmit = (e: React.FormEvent) => {
+  const handleCreateCourierSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const newCourier: Courier = {
-      id: cFormUser || `C-${Math.floor(Math.random() * 1000) + 100}`,
-      name: cFormName,
-      phone: cFormPhone,
-      vehicle: cFormVehicle,
-      plate: cFormPlate,
-      status: 'Disponible'
-    };
+    const newCourierId = cFormUser || `courier_${Date.now()}`;
 
-    const updatedCouriers = [...couriers, newCourier];
-    setCouriers(updatedCouriers);
-    localStorage.setItem('enkargord_couriers', JSON.stringify(updatedCouriers));
+    try {
+      await setDoc(doc(db, 'couriers', newCourierId), {
+        id: newCourierId,
+        userUid: cFormUser || null,
+        fullName: cFormName,
+        phone: cFormPhone,
+        vehicleType: cFormVehicle,
+        vehiclePlate: cFormPlate,
+        status: 'available',
+        currentOrderCount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
 
-    // Reset inputs
-    setCFormName('');
-    setCFormPhone('');
-    setCFormPlate('');
-    setCFormUser('');
-    triggerToast(`Mensajero "${cFormName}" registrado en la flota.`);
+      // Reset inputs
+      setCFormName('');
+      setCFormPhone('');
+      setCFormPlate('');
+      setCFormUser('');
+      triggerToast(`Mensajero "${cFormName}" registrado en la flota.`);
+    } catch (error) {
+      console.error("Error creating courier in Firestore:", error);
+      alert("Error al registrar el repartidor en la base de datos.");
+    }
   };
 
   // Remove courier from fleet
-  const handleDeleteCourier = (courierId: string) => {
+  const handleDeleteCourier = async (courierId: string) => {
     if (confirm("¿Estás seguro de que deseas dar de baja a este repartidor de la flota?")) {
-      const updated = couriers.filter(c => c.id !== courierId);
-      setCouriers(updated);
-      localStorage.setItem('enkargord_couriers', JSON.stringify(updated));
-      triggerToast("Mensajero eliminado de la flota.");
+      try {
+        await deleteDoc(doc(db, 'couriers', courierId));
+        triggerToast("Mensajero eliminado de la flota.");
+      } catch (error) {
+        console.error("Error deleting courier in Firestore:", error);
+        alert("Error al eliminar el mensajero de la base de datos.");
+      }
     }
   };
 
