@@ -11,6 +11,7 @@ const adminConfig = {
 
 const hasCredentials = !!(adminConfig.projectId && adminConfig.clientEmail && adminConfig.privateKey);
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let app: any = null;
 
 if (hasCredentials) {

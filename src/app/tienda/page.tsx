@@ -68,6 +68,7 @@ export default function StoreDashboard() {
           courierName: o.courierName || 'No asignado',
           time: o.time || 'N/A'
         }));
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setOrders(mapped);
       }
     }

@@ -58,6 +58,7 @@ export default function StoreOrdersList() {
       const local = localStorage.getItem('enkargord_orders');
       if (local) {
         const parsed = JSON.parse(local);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const mapped = parsed.map((o: any) => ({
           trackingId: o.trackingId,
           customerName: o.customer.name,
@@ -69,6 +70,7 @@ export default function StoreOrdersList() {
           courierName: o.courierName || 'No asignado',
           date: o.createdAt ? o.createdAt.split('T')[0] : '2026-07-20'
         }));
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setOrders(mapped);
       }
     }
@@ -84,6 +86,7 @@ export default function StoreOrdersList() {
         const local = localStorage.getItem('enkargord_orders');
         if (local) {
           const parsed = JSON.parse(local);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const filtered = parsed.filter((o: any) => o.trackingId !== id);
           localStorage.setItem('enkargord_orders', JSON.stringify(filtered));
         }

@@ -8,7 +8,7 @@ import {
   createUserWithEmailAndPassword,
   User as FirebaseUser 
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase/client';
 
 export type UserRole = 'Cliente' | 'Tienda' | 'Motorista' | 'Admin';
@@ -19,6 +19,7 @@ export interface UserProfile {
   email: string;
   phone?: string;
   role: UserRole;
+  storeId?: string;
   createdAt: string;
 }
 
@@ -92,10 +93,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const credentials = await signInWithEmailAndPassword(auth, email, password);
-      const userProfile = await fetchProfile(credentials.user.uid);
+      let userProfile = await fetchProfile(credentials.user.uid);
+      
+      // Auto-recovery mechanism: If user exists in Auth but not in Firestore, create default profile
       if (!userProfile) {
-        throw new Error('No se encontró el perfil de usuario en la base de datos.');
+        const defaultProfile: UserProfile = {
+          uid: credentials.user.uid,
+          name: credentials.user.displayName || email.split('@')[0],
+          email: email,
+          role: 'Cliente',
+          createdAt: new Date().toISOString(),
+        };
+        await setDoc(doc(db, 'users', credentials.user.uid), {
+          name: defaultProfile.name,
+          email: defaultProfile.email,
+          role: defaultProfile.role,
+          createdAt: defaultProfile.createdAt
+        });
+        userProfile = defaultProfile;
       }
+      
+      setProfile(userProfile);
+      setRole(userProfile.role);
       return userProfile;
     } catch (error) {
       setLoading(false);
@@ -112,19 +131,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ): Promise<UserProfile> => {
     setLoading(true);
     try {
+      // 1. Create in Firebase Auth
       const credentials = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = credentials.user.uid;
+      
+      let storeId = '';
+      // 2. If role is Tienda, create store document first
+      if (role === 'Tienda') {
+        const storeRef = doc(collection(db, 'stores'));
+        storeId = storeRef.id;
+        
+        await setDoc(storeRef, {
+          id: storeId,
+          ownerUid: uid,
+          commercialName: name,
+          phone,
+          email,
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      // 3. Create user profile document in Firestore users/{uid}
       const profileData: Omit<UserProfile, 'uid'> = {
         name,
         email,
         phone,
         role,
+        storeId: storeId || undefined,
         createdAt: new Date().toISOString(),
       };
       
-      // Store user profile document in Firestore
-      await setDoc(doc(db, 'users', credentials.user.uid), profileData);
+      await setDoc(doc(db, 'users', uid), profileData);
       
-      const newProfile: UserProfile = { uid: credentials.user.uid, ...profileData };
+      const newProfile: UserProfile = { uid, ...profileData };
       setProfile(newProfile);
       setRole(role);
       return newProfile;
