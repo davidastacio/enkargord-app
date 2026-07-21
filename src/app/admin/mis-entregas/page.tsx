@@ -159,33 +159,33 @@ export default function MisEntregasPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  // ── Activate Operative Profile ──────────────────────────────────────────────
+  // ── Activate Operative Profile (Server-side API endpoint call) ─────────────
   const handleActivateProfile = async () => {
-    if (!adminCourierId || !authUser) return;
+    if (!authUser) return;
     setActivatingProfile(true);
     try {
-      console.log(`[Repartidor Debug] Creando perfil operativo couriers/${adminCourierId}`);
-      await setDoc(doc(db, 'couriers', adminCourierId), {
-        id: adminCourierId,
-        userUid: adminUid,
-        userRole: 'admin',
-        operationalType: 'admin_courier',
-        fullName: profile?.name || authUser.displayName || 'Administrador',
-        phone: profile?.phone || '—',
-        email: authUser.email || '',
-        vehicleType: 'motocicleta',
-        vehiclePlate: 'ADMIN-1',
-        status: 'available',
-        active: true,
-        currentOrderCount: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+      console.log(`[Repartidor Debug] Solicitando activación de perfil a /api/admin/courier-profile/activate para UID: ${adminUid}`);
+      
+      const idToken = await authUser.getIdToken();
+      const res = await fetch('/api/admin/courier-profile/activate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
       });
-      setHasOperativeProfile(true);
-      triggerToast("✅ Perfil de repartidor activado correctamente.");
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setHasOperativeProfile(true);
+        triggerToast("✅ Perfil operativo activado correctamente.");
+      } else {
+        alert(`No se pudo activar el perfil operativo: ${data.error || 'Error desconocido'}`);
+      }
     } catch (err: any) {
-      console.error("[Repartidor Debug] Error creando perfil de mensajero:", err);
-      alert(`No se pudo activar el perfil operativo: ${err.message || err}`);
+      console.error("[Repartidor Debug] Error llamando endpoint de activación:", err);
+      alert(`Ocurrió un error al contactar al servidor: ${err.message || err}`);
     } finally {
       setActivatingProfile(false);
     }
