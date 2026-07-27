@@ -9,18 +9,26 @@ import {
   ShieldCheck, 
   PhoneCall,
   ChevronRight,
-  Menu,
-  Check
+  Check,
+  Truck,
+  Building2,
+  Sparkles,
+  Globe,
+  DollarSign,
+  CheckCircle2,
+  ArrowRight,
+  HelpCircle,
+  TrendingUp,
 } from 'lucide-react';
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#F8F9FB] font-sans text-slate-800 antialiased flex flex-col justify-between">
+    <div className="min-h-screen bg-[#F8F9FB] font-sans text-slate-800 antialiased flex flex-col justify-between scroll-smooth">
       
       {/* ==========================================
          HEADER / NAVBAR
          ========================================== */}
-      <header className="bg-white border-b border-[#E7E7EC] px-6 py-4 sticky top-0 z-50">
+      <header className="bg-white/90 backdrop-blur-md border-b border-[#E7E7EC] px-6 py-4 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           
           {/* Logo on the left */}
@@ -41,18 +49,18 @@ export default function LandingPage() {
             <Link href="#" className="text-[#d3121a] hover:text-[#b00f14] transition-colors relative after:content-[''] after:absolute after:bottom-[-20px] after:left-0 after:right-0 after:h-[2px] after:bg-[#d3121a]">
               Inicio
             </Link>
-            <Link href="#como-funciona" className="hover:text-slate-900 transition-colors">
+            <a href="#como-funciona" className="hover:text-slate-900 transition-colors">
               Cómo funciona
-            </Link>
-            <Link href="#servicios" className="hover:text-slate-900 transition-colors">
+            </a>
+            <a href="#servicios" className="hover:text-slate-900 transition-colors">
               Servicios
-            </Link>
-            <Link href="#precios" className="hover:text-slate-900 transition-colors">
+            </a>
+            <a href="#precios" className="hover:text-slate-900 transition-colors">
               Precios
-            </Link>
-            <Link href="#nosotros" className="hover:text-slate-900 transition-colors">
+            </a>
+            <a href="#nosotros" className="hover:text-slate-900 transition-colors">
               Nosotros
-            </Link>
+            </a>
             <a 
               href="https://wa.me/18296564603" 
               target="_blank" 
@@ -98,7 +106,7 @@ export default function LandingPage() {
           </h2>
           
           <p className="text-base md:text-lg text-slate-500 font-medium leading-relaxed">
-            EnkargoRD es la plataforma de envíos que conecta personas y negocios con entregas rápidas, seguras y en tiempo real.
+            EnkargoRD es la plataforma de envíos que conecta personas y negocios con entregas rápidas, seguras y en tiempo real en todo el país.
           </p>
 
           <div className="flex flex-wrap gap-4 pt-2">
@@ -110,17 +118,16 @@ export default function LandingPage() {
               <ChevronRight size={16} />
             </Link>
             <a 
-              href="#como-funciona" 
+              href="#precios" 
               className="bg-white hover:bg-slate-50 border border-[#E7E7EC] text-slate-700 font-bold text-sm py-4 px-8 rounded-xl transition-all"
             >
-              Ver cómo funciona
+              Ver tarifas
             </a>
           </div>
         </div>
 
         {/* Right Column Image Composition */}
         <div className="relative w-full aspect-[4/3] max-w-lg lg:max-w-none mx-auto flex items-center justify-center">
-          {/* Subtle abstract background element for movement effect */}
           <div className="absolute w-[80%] h-[80%] bg-[#fee2e2]/60 rounded-full blur-3xl -z-10"></div>
           
           <div className="relative w-full h-full">
@@ -160,7 +167,7 @@ export default function LandingPage() {
               </div>
               <h4 className="font-extrabold text-slate-800 text-base">Crea tu envío</h4>
               <p className="text-sm text-slate-400 font-medium max-w-xs leading-relaxed">
-                Ingresa los detalles de recogida y destino.
+                Ingresa los detalles de recogida y destino desde tu panel.
               </p>
             </div>
 
@@ -171,7 +178,7 @@ export default function LandingPage() {
               </div>
               <h4 className="font-extrabold text-slate-800 text-base">Asignamos tu courier</h4>
               <p className="text-sm text-slate-400 font-medium max-w-xs leading-relaxed">
-                Encontramos al mejor courier cercano a ti.
+                Encontramos al mejor courier o ruta cercana a ti.
               </p>
             </div>
 
@@ -182,10 +189,317 @@ export default function LandingPage() {
               </div>
               <h4 className="font-extrabold text-slate-800 text-base">Entregamos</h4>
               <p className="text-sm text-slate-400 font-medium max-w-xs leading-relaxed">
-                Tu pedido llega rápido, seguro y a tiempo.
+                Tu pedido llega rápido, seguro y con confirmación instantánea.
               </p>
             </div>
 
+          </div>
+
+        </div>
+      </section>
+
+      {/* ==========================================
+         SECCIÓN DE SERVICIOS (#servicios)
+         ========================================== */}
+      <section id="servicios" className="py-20 px-6 bg-[#F8F9FB]">
+        <div className="max-w-7xl mx-auto space-y-12">
+          
+          <div className="text-center space-y-3 max-w-2xl mx-auto">
+            <span className="text-xs font-bold text-[#d3121a] uppercase tracking-widest block">
+              NUESTROS SERVICIOS
+            </span>
+            <h3 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
+              Soluciones logísticas diseñadas para hacer crecer tu negocio
+            </h3>
+            <p className="text-sm text-slate-500 font-medium leading-relaxed">
+              Desde envíos locales en la ciudad hasta entregas interprovinciales a cualquier rincón de República Dominicana.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            
+            {/* Service 1 */}
+            <div className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm hover:shadow-md transition-all space-y-4 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="w-12 h-12 bg-red-50 text-[#d3121a] rounded-xl flex items-center justify-center font-bold">
+                  <Truck size={24} />
+                </div>
+                <h4 className="font-extrabold text-slate-900 text-base">Envíos Locales Express</h4>
+                <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                  Entregas el mismo día dentro del Gran Santo Domingo con rastreo en vivo y mensajeros capacitados.
+                </p>
+              </div>
+              <ul className="text-xs text-slate-600 space-y-2 border-t border-slate-100 pt-4 font-semibold">
+                <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-emerald-500" /> Entrega misma jornada</li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-emerald-500" /> Rastreo GPS en tiempo real</li>
+              </ul>
+            </div>
+
+            {/* Service 2 */}
+            <div className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm hover:shadow-md transition-all space-y-4 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center font-bold">
+                  <Globe size={24} />
+                </div>
+                <h4 className="font-extrabold text-slate-900 text-base">Envíos Nacionales Globales</h4>
+                <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                  Conexión logística directa a las 31 provincias del país con despacho organizado por corredores.
+                </p>
+              </div>
+              <ul className="text-xs text-slate-600 space-y-2 border-t border-slate-100 pt-4 font-semibold">
+                <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-emerald-500" /> Cobertura nacional 100%</li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-emerald-500" /> Salidas diarias programadas</li>
+              </ul>
+            </div>
+
+            {/* Service 3 */}
+            <div className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm hover:shadow-md transition-all space-y-4 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center font-bold">
+                  <Package size={24} />
+                </div>
+                <h4 className="font-extrabold text-slate-900 text-base">Fulfillment y Almacén</h4>
+                <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                  Guardamos tu inventario, empacamos tus órdenes y nos encargamos de despachar sin que muevas un dedo.
+                </p>
+              </div>
+              <ul className="text-xs text-slate-600 space-y-2 border-t border-slate-100 pt-4 font-semibold">
+                <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-emerald-500" /> Empaque personalizado</li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-emerald-500" /> Control de inventario</li>
+              </ul>
+            </div>
+
+            {/* Service 4 */}
+            <div className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm hover:shadow-md transition-all space-y-4 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold">
+                  <DollarSign size={24} />
+                </div>
+                <h4 className="font-extrabold text-slate-900 text-base">Cobro Contra Entrega (COD)</h4>
+                <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                  Recaudamos el dinero en efectivo de tus ventas en la puerta del cliente y lo depositamos directamente.
+                </p>
+              </div>
+              <ul className="text-xs text-slate-600 space-y-2 border-t border-slate-100 pt-4 font-semibold">
+                <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-emerald-500" /> Liquidaciones transparentes</li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-emerald-500" /> Reportes de cobro diarios</li>
+              </ul>
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+      {/* ==========================================
+         SECCIÓN DE PRECIOS (#precios)
+         ========================================== */}
+      <section id="precios" className="py-20 px-6 bg-white border-t border-b border-[#E7E7EC]">
+        <div className="max-w-7xl mx-auto space-y-12">
+          
+          <div className="text-center space-y-3 max-w-2xl mx-auto">
+            <span className="text-xs font-bold text-[#d3121a] uppercase tracking-widest block">
+              TARIFAS TRANSPARENTES
+            </span>
+            <h3 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
+              Precios fijos sin sorpresas ni letras pequeñas
+            </h3>
+            <p className="text-sm text-slate-500 font-medium leading-relaxed">
+              Disfruta de tarifas sencillas adaptadas a la ubicación de tu cliente.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            
+            {/* Plan 1: Santo Domingo */}
+            <div className="bg-[#F8F9FB] border border-[#E7E7EC] rounded-3xl p-8 space-y-6 flex flex-col justify-between hover:border-slate-300 transition-all relative">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="bg-red-50 text-[#d3121a] px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                    Envío Local
+                  </span>
+                  <MapPin size={22} className="text-[#d3121a]" />
+                </div>
+                
+                <div>
+                  <h4 className="text-2xl font-extrabold text-slate-900">Santo Domingo</h4>
+                  <p className="text-xs text-slate-500 font-medium mt-1">Gran Santo Domingo, DN y sectores aledaños</p>
+                </div>
+
+                <div className="py-4 border-y border-slate-200">
+                  <span className="text-4xl font-black text-slate-900">RD$ 300</span>
+                  <span className="text-xs text-slate-500 font-bold ml-2">/ por envío</span>
+                </div>
+
+                <ul className="space-y-3 text-xs font-semibold text-slate-700">
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
+                    <span>Entrega el mismo día</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
+                    <span>Seguimiento GPS en tiempo real</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
+                    <span>Cobro Contra Entrega (COD) incluido</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
+                    <span>Prueba de entrega con foto/firma</span>
+                  </li>
+                </ul>
+              </div>
+
+              <Link 
+                href="/registro" 
+                className="w-full bg-[#d3121a] hover:bg-[#b00f14] text-white font-extrabold text-xs py-4 px-6 rounded-xl transition-all shadow-md shadow-red-100 text-center block"
+              >
+                Empezar Envíos en Santo Domingo
+              </Link>
+            </div>
+
+            {/* Plan 2: Envío Global / Nacional */}
+            <div className="bg-slate-900 text-white rounded-3xl p-8 space-y-6 flex flex-col justify-between shadow-xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 bg-[#d3121a] text-white px-4 py-1 rounded-bl-xl text-[10px] font-extrabold uppercase tracking-widest">
+                Recomendado
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="bg-white/10 text-amber-300 px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                    Envío Global / Nacional
+                  </span>
+                  <Globe size={22} className="text-amber-300" />
+                </div>
+                
+                <div>
+                  <h4 className="text-2xl font-extrabold text-white">Todo el País</h4>
+                  <p className="text-xs text-slate-300 font-medium mt-1">31 Provincias y todos los municipios de RD</p>
+                </div>
+
+                <div className="py-4 border-y border-slate-800">
+                  <span className="text-4xl font-black text-white">RD$ 400</span>
+                  <span className="text-xs text-slate-400 font-bold ml-2">/ por envío</span>
+                </div>
+
+                <ul className="space-y-3 text-xs font-semibold text-slate-200">
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 size={16} className="text-emerald-400 flex-shrink-0" />
+                    <span>Cobertura nacional en 31 provincias</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 size={16} className="text-emerald-400 flex-shrink-0" />
+                    <span>Rutas interprovinciales diarias</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 size={16} className="text-emerald-400 flex-shrink-0" />
+                    <span>Seguro de paquete garantizado</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 size={16} className="text-emerald-400 flex-shrink-0" />
+                    <span>Impresión de Labels e historial completo</span>
+                  </li>
+                </ul>
+              </div>
+
+              <a 
+                href="https://wa.me/18296564603"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full bg-white text-slate-900 hover:bg-slate-100 font-extrabold text-xs py-4 px-6 rounded-xl transition-all text-center block"
+              >
+                Solicitar Servicio Nacional
+              </a>
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+      {/* ==========================================
+         SECCIÓN NOSOTROS (#nosotros)
+         ========================================== */}
+      <section id="nosotros" className="py-20 px-6 bg-[#F8F9FB]">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          
+          <div className="space-y-6">
+            <span className="text-xs font-bold text-[#d3121a] uppercase tracking-widest block">
+              SOBRE NOSOTROS
+            </span>
+            <h3 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">
+              La plataforma de logística moderna hecha para República Dominicana
+            </h3>
+            <p className="text-sm text-slate-500 font-medium leading-relaxed">
+              En EnkargoRD combinamos tecnología avanzada, seguimiento satelital en vivo y una red de repartidores capacitados para que comercios y particulares realicen entregas sin complicaciones.
+            </p>
+            
+            <div className="grid grid-cols-2 gap-6 pt-2">
+              <div className="bg-white border border-[#E7E7EC] p-4 rounded-2xl">
+                <span className="block text-3xl font-black text-[#d3121a]">15k+</span>
+                <span className="text-xs font-bold text-slate-600 mt-1 block">Envíos completados</span>
+              </div>
+              <div className="bg-white border border-[#E7E7EC] p-4 rounded-2xl">
+                <span className="block text-3xl font-black text-slate-900">31</span>
+                <span className="text-xs font-bold text-slate-600 mt-1 block">Provincias conectadas</span>
+              </div>
+              <div className="bg-white border border-[#E7E7EC] p-4 rounded-2xl">
+                <span className="block text-3xl font-black text-slate-900">99.4%</span>
+                <span className="text-xs font-bold text-slate-600 mt-1 block">Efectividad de entrega</span>
+              </div>
+              <div className="bg-white border border-[#E7E7EC] p-4 rounded-2xl">
+                <span className="block text-3xl font-black text-[#d3121a]">24/7</span>
+                <span className="text-xs font-bold text-slate-600 mt-1 block">Atención al cliente</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-[#E7E7EC] rounded-3xl p-8 shadow-sm space-y-6">
+            <h4 className="text-xl font-extrabold text-slate-900">¿Por qué los comercios nos eligen?</h4>
+            <div className="space-y-4 text-xs font-semibold text-slate-600">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-red-50 text-[#d3121a] rounded-lg mt-0.5">
+                  <Sparkles size={16} />
+                </div>
+                <div>
+                  <strong className="text-slate-900 block text-sm">Plataforma Todo en Uno</strong>
+                  <span>Gestiona tiendas, motoristas, etiquetas PDF y liquidaciones desde un solo panel intuitivo.</span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg mt-0.5">
+                  <TrendingUp size={16} />
+                </div>
+                <div>
+                  <strong className="text-slate-900 block text-sm">Cobro Seguro y Transparente</strong>
+                  <span>Transfieres el costo de tu producto directamente a tu cuenta con cierres de caja claros.</span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg mt-0.5">
+                  <ShieldCheck size={16} />
+                </div>
+                <div>
+                  <strong className="text-slate-900 block text-sm">Soporte Humano Directo</strong>
+                  <span>Atención rápida vía WhatsApp para resolver cualquier consulta en tiempo real.</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <a
+                href="https://wa.me/18296564603"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs py-3.5 px-6 rounded-xl transition-all text-center flex items-center justify-center gap-2"
+              >
+                Hablar con un asesor comercial
+                <ArrowRight size={14} />
+              </a>
+            </div>
           </div>
 
         </div>
@@ -251,6 +565,60 @@ export default function LandingPage() {
 
         </div>
       </section>
+
+      {/* ==========================================
+         FOOTER
+         ========================================== */}
+      <footer className="bg-slate-950 text-slate-400 py-12 px-6 border-t border-slate-800 text-xs">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+          <div className="space-y-3">
+            <div className="relative h-10 w-[180px]">
+              <Image 
+                src="/logo-horizontal.png" 
+                alt="EnkargoRD Logo" 
+                fill 
+                className="object-contain object-left invert" 
+              />
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-500 font-medium">
+              Plataforma logística centralizada de envíos express y cobertura nacional en República Dominicana.
+            </p>
+          </div>
+
+          <div>
+            <h6 className="font-extrabold text-white text-xs uppercase tracking-wider mb-3">Navegación</h6>
+            <ul className="space-y-2 font-semibold">
+              <li><a href="#" className="hover:text-white transition-colors">Inicio</a></li>
+              <li><a href="#como-funciona" className="hover:text-white transition-colors">Cómo funciona</a></li>
+              <li><a href="#servicios" className="hover:text-white transition-colors">Servicios</a></li>
+              <li><a href="#precios" className="hover:text-white transition-colors">Precios</a></li>
+              <li><a href="#nosotros" className="hover:text-white transition-colors">Nosotros</a></li>
+            </ul>
+          </div>
+
+          <div>
+            <h6 className="font-extrabold text-white text-xs uppercase tracking-wider mb-3">Tarifas</h6>
+            <ul className="space-y-2 font-semibold text-slate-400">
+              <li>Santo Domingo: <strong className="text-white">RD$ 300</strong></li>
+              <li>Envío Global / Nacional: <strong className="text-white">RD$ 400</strong></li>
+              <li>Fulfillment personalizado</li>
+            </ul>
+          </div>
+
+          <div>
+            <h6 className="font-extrabold text-white text-xs uppercase tracking-wider mb-3">Contacto</h6>
+            <p className="font-semibold text-slate-300 mb-2">Atención al Cliente:</p>
+            <a href="https://wa.me/18296564603" target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline font-extrabold block">
+              WhatsApp: +1 (829) 656-4603
+            </a>
+          </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto border-t border-slate-900 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 font-semibold text-[11px] text-slate-600">
+          <span>&copy; {new Date().getFullYear()} EnkargoRD. Todos los derechos reservados.</span>
+          <span>República Dominicana</span>
+        </div>
+      </footer>
 
       {/* Floating WhatsApp Support Button */}
       <a
