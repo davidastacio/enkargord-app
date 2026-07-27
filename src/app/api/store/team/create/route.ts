@@ -96,12 +96,15 @@ export async function POST(request: Request) {
 
     if (insertProfileErr) {
       console.error("Supabase profile insert error:", insertProfileErr);
-      // Clean up Firebase user if profile insert fails
       await adminAuth.deleteUser(newFirebaseUser.uid).catch(console.error);
+      const isRls = insertProfileErr.code === '42501' || String(insertProfileErr.message || '').includes('row-level security');
+      const userFriendlyMsg = isRls
+        ? "Falta la clave SUPABASE_SECRET_KEY en las variables de entorno de Vercel para autorizar la creación de perfiles de colaboradores sin restricciones RLS."
+        : (insertProfileErr.message || "Error al insertar perfil en Supabase");
       return NextResponse.json({
         error: "PROFILE_INSERT_FAILED",
-        details: insertProfileErr.message || insertProfileErr
-      }, { status: 500 });
+        details: userFriendlyMsg
+      }, { status: 400 });
     }
 
     // 6. Create organization_members entry (Use "store" to satisfy DB check constraint)

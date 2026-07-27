@@ -93,7 +93,8 @@ export default function StoreTeamPage() {
         if (data.error === "EMAIL_ALREADY_IN_USE") {
           throw new Error("Este correo electrónico ya está registrado en la plataforma.");
         }
-        throw new Error(data.error || "No se pudo crear la cuenta del colaborador.");
+        const errorDetail = typeof data.details === 'string' ? data.details : (data.error || "No se pudo crear la cuenta del colaborador.");
+        throw new Error(errorDetail);
       }
 
       triggerToast(`✅ Cuenta creada correctamente para ${name}.`);
