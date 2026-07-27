@@ -16,18 +16,21 @@ import {
   User,
   Mail,
   Phone,
+  Building,
 } from 'lucide-react';
 import {
   DEFAULT_PRICING,
   type PricingSettings,
   type SettlementBeneficiary,
   type ZoneSurcharge,
+  type StoreSpecialPrice,
 } from '@/data/courier';
 import {
   getOperationSettings,
   saveOperationSettings,
 } from '@/lib/supabase/operations';
 import { updateCurrentUserProfile } from '@/lib/supabase/profiles';
+import { listSupabaseStoreNames } from '@/lib/supabase/stores';
 import { useAuth } from '@/hooks/useAuth';
 import LogoutButton from '@/components/auth/LogoutButton';
 
@@ -58,6 +61,61 @@ export default function OperacionesPage() {
   const [newBeneficiary, setNewBeneficiary] = useState<Partial<SettlementBeneficiary>>({
     name: '', calculationType: 'fixed', fixedAmount: 50, percentage: 0, active: true,
   });
+
+  // Special Store Prices State
+  const [registeredStores, setRegisteredStores] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedStoreIdForSpecial, setSelectedStoreIdForSpecial] = useState('');
+  const [specialBaseFee, setSpecialBaseFee] = useState('250');
+  const [specialExpressFee, setSpecialExpressFee] = useState('350');
+
+  useEffect(() => {
+    void listSupabaseStoreNames().then((storesMap) => {
+      const list = Object.entries(storesMap).map(([id, name]) => ({ id, name }));
+      setRegisteredStores(list);
+      if (list.length > 0) setSelectedStoreIdForSpecial(list[0].id);
+    }).catch((err) => console.error("Error loading store list:", err));
+  }, []);
+
+  const handleAddSpecialStorePrice = () => {
+    if (!selectedStoreIdForSpecial) return;
+    const storeObj = registeredStores.find(s => s.id === selectedStoreIdForSpecial);
+    const storeName = storeObj?.name || 'Tienda';
+    const baseCost = parseFloat(specialBaseFee) || 300;
+    const expressCost = parseFloat(specialExpressFee) || 450;
+
+    const currentSpecials = pricing.specialStorePrices || [];
+    const existingIndex = currentSpecials.findIndex(s => s.storeId === selectedStoreIdForSpecial);
+
+    let updatedSpecials: StoreSpecialPrice[];
+    if (existingIndex >= 0) {
+      updatedSpecials = [...currentSpecials];
+      updatedSpecials[existingIndex] = {
+        storeId: selectedStoreIdForSpecial,
+        storeName,
+        baseShippingCost: baseCost,
+        expressShippingCost: expressCost
+      };
+    } else {
+      updatedSpecials = [
+        ...currentSpecials,
+        {
+          storeId: selectedStoreIdForSpecial,
+          storeName,
+          baseShippingCost: baseCost,
+          expressShippingCost: expressCost
+        }
+      ];
+    }
+
+    setPricing({ ...pricing, specialStorePrices: updatedSpecials });
+    triggerToast(`Tarifa especial configurada para "${storeName}".`);
+  };
+
+  const handleRemoveSpecialStorePrice = (storeId: string) => {
+    const updated = (pricing.specialStorePrices || []).filter(s => s.storeId !== storeId);
+    setPricing({ ...pricing, specialStorePrices: updated });
+    triggerToast('Tarifa especial eliminada.');
+  };
 
   useEffect(() => {
     if (profile) {
@@ -344,6 +402,115 @@ export default function OperacionesPage() {
                   placeholder="Ej. 450"
                 />
               </div>
+            </div>
+          </section>
+
+          {/* Section 1.5: Tarifas Especiales por Tienda */}
+          <section className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                  <Building size={18} className="text-[#d3121a]" /> Precios Especiales por Tienda Registrada
+                </h3>
+                <p className="text-xs text-slate-400 font-semibold mt-0.5">
+                  Asigna montos de envío personalizados (Estándar y Express) para tiendas específicas.
+                </p>
+              </div>
+            </div>
+
+            {/* Form to add/update special store price */}
+            <div className="p-4 bg-slate-50 border border-[#E7E7EC] rounded-2xl space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1 md:col-span-1">
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                    Seleccionar Tienda Registrada
+                  </label>
+                  <select
+                    value={selectedStoreIdForSpecial}
+                    onChange={(e) => setSelectedStoreIdForSpecial(e.target.value)}
+                    className="w-full bg-white border border-[#E7E7EC] rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-[#d3121a]"
+                  >
+                    {registeredStores.map(s => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.id})</option>
+                    ))}
+                    {registeredStores.length === 0 && (
+                      <option value="">No hay tiendas cargadas</option>
+                    )}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                    Tarifa Estándar Especial (RD$)
+                  </label>
+                  <input
+                    type="number"
+                    value={specialBaseFee}
+                    onChange={(e) => setSpecialBaseFee(e.target.value)}
+                    placeholder="Ej. 250"
+                    className="w-full bg-white border border-[#E7E7EC] rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-[#d3121a]"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                    Tarifa Express Especial (RD$)
+                  </label>
+                  <input
+                    type="number"
+                    value={specialExpressFee}
+                    onChange={(e) => setSpecialExpressFee(e.target.value)}
+                    placeholder="Ej. 350"
+                    className="w-full bg-white border border-[#E7E7EC] rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-[#d3121a]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleAddSpecialStorePrice}
+                  className="bg-[#d3121a] hover:bg-[#b00f14] text-white font-extrabold text-xs py-2 px-4 rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus size={14} /> Asignar Precio Especial a Tienda
+                </button>
+              </div>
+            </div>
+
+            {/* List of configured special prices */}
+            <div className="space-y-3">
+              <h4 className="font-extrabold text-xs text-slate-700 uppercase tracking-wider">
+                Tiendas con Precio Especial Asignado ({(pricing.specialStorePrices || []).length})
+              </h4>
+
+              {(pricing.specialStorePrices || []).length === 0 ? (
+                <div className="text-center py-6 text-slate-400 font-semibold text-xs border border-dashed border-slate-200 rounded-xl">
+                  Ninguna tienda tiene tarifa especial asignada. Usarán las tarifas globales por defecto.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(pricing.specialStorePrices || []).map((sp) => (
+                    <div key={sp.storeId} className="p-4 bg-white border border-[#E7E7EC] rounded-xl flex items-center justify-between shadow-sm">
+                      <div>
+                        <span className="font-extrabold text-xs text-slate-900 block">{sp.storeName}</span>
+                        <span className="text-[10px] text-slate-400 font-mono block">ID: {sp.storeId}</span>
+                        <div className="flex items-center gap-3 mt-1 text-xs font-bold text-slate-700">
+                          <span>Estándar: <strong className="text-[#d3121a]">RD${sp.baseShippingCost}</strong></span>
+                          <span>Express: <strong className="text-[#d3121a]">RD${sp.expressShippingCost ?? 450}</strong></span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSpecialStorePrice(sp.storeId)}
+                        className="p-2 border border-red-200 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-all cursor-pointer"
+                        title="Eliminar tarifa especial"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
 

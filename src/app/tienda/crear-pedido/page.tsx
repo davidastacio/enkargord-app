@@ -11,12 +11,15 @@ import {
   ShieldAlert,
   X,
   Search,
+  ShoppingBag,
+  Tag,
 } from 'lucide-react';
 import Link from 'next/link';
 import DeliveryLocationMap from '@/components/DeliveryLocationMap';
 import { useAuth } from '@/hooks/useAuth';
 import { createSupabaseOrder } from '@/lib/supabase/orders';
 import { getOperationSettings } from '@/lib/supabase/operations';
+import { getStoreProducts, saveStoreProduct, type StoreProductItem } from '@/lib/supabase/products';
 import { DEFAULT_PRICING, type PricingSettings } from '@/data/courier';
 import {
   PROVINCES,
@@ -85,15 +88,42 @@ export default function CreateOrder() {
   const [shippingType, setShippingType] = useState<'regular' | 'express'>('regular');
   const [shippingFee, setShippingFee] = useState(DEFAULT_PRICING.baseShippingCost);
   const [expressShippingFee, setExpressShippingFee] = useState(DEFAULT_PRICING.expressShippingCost || 450);
+  const [hasSpecialPrice, setHasSpecialPrice] = useState(false);
 
+  // PRODUCT CATALOG & AUTO-FILL STATE
+  const [productName, setProductName] = useState('');
+  const [storeCatalog, setStoreCatalog] = useState<StoreProductItem[]>([]);
+
+  // Load store product catalog on mount
+  useEffect(() => {
+    const storeIdReal = profile?.storeId || profile?.uid;
+    if (!storeIdReal) return;
+    void getStoreProducts(storeIdReal).then(setStoreCatalog);
+  }, [profile?.storeId, profile?.uid]);
+
+  // Load operation settings & special store pricing
   useEffect(() => {
     if (!profile?.uid) return;
     let active = true;
+    const currentStoreId = profile?.storeId || profile?.uid;
+
     void getOperationSettings<PricingSettings>()
       .then((settings) => {
-        const configuredFee = parseFloat(String(settings?.baseShippingCost ?? ''));
-        const configuredExpressFee = parseFloat(String(settings?.expressShippingCost ?? ''));
-        if (active) {
+        if (!active) return;
+
+        // Check if Admin assigned a special price for this store
+        const specialEntry = settings?.specialStorePrices?.find(
+          s => s.storeId === currentStoreId || s.storeId === profile?.uid || s.storeId === profile?.storeId
+        );
+
+        if (specialEntry) {
+          setHasSpecialPrice(true);
+          setShippingFee(specialEntry.baseShippingCost);
+          setExpressShippingFee(specialEntry.expressShippingCost ?? 450);
+        } else {
+          setHasSpecialPrice(false);
+          const configuredFee = parseFloat(String(settings?.baseShippingCost ?? ''));
+          const configuredExpressFee = parseFloat(String(settings?.expressShippingCost ?? ''));
           if (Number.isFinite(configuredFee) && configuredFee >= 0) {
             setShippingFee(configuredFee);
           }
@@ -108,7 +138,18 @@ export default function CreateOrder() {
     return () => {
       active = false;
     };
-  }, [profile?.uid]);
+  }, [profile?.uid, profile?.storeId]);
+
+  const handleProductNameChange = (value: string) => {
+    setProductName(value);
+    const matchedProduct = storeCatalog.find(
+      p => p.name.toLowerCase() === value.trim().toLowerCase()
+    );
+    if (matchedProduct) {
+      setCollectAmount(matchedProduct.price.toString());
+      triggerToast(`⚡ Precio RD$${matchedProduct.price} cargado automáticamente para "${matchedProduct.name}".`);
+    }
+  };
 
   const activeShippingFee = shippingType === 'express' ? expressShippingFee : shippingFee;
 
@@ -439,6 +480,8 @@ export default function CreateOrder() {
         
         packageType: "Paquete pequeño",
         packageQuantity: 1,
+        packageDescription: productName.trim() || "Paquete pequeño",
+        productName: productName.trim() || null,
         approximateWeight: null,
         handlingInstructions: [],
         
@@ -460,6 +503,14 @@ export default function CreateOrder() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
+
+      // Auto-save product to store catalog for future auto-fill
+      if (productName.trim() && requiresCod) {
+        void saveStoreProduct(storeIdReal, {
+          name: productName.trim(),
+          price: parseFloat(collectAmount) || 0
+        });
+      }
 
       await createSupabaseOrder(newOrder);
 
@@ -928,6 +979,18 @@ export default function CreateOrder() {
 
           </div>
 
+          {hasSpecialPrice && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center justify-between">
+              <div className="flex items-center gap-3 text-xs font-extrabold text-slate-900">
+                <Tag size={18} className="text-[#d3121a]" />
+                <span>🏷️ ¡Tu tienda cuenta con una Tarifa Especial Asignada por EnkargoRD!</span>
+              </div>
+              <span className="text-[10px] bg-[#d3121a] text-white font-extrabold px-3 py-1 rounded-full uppercase tracking-wider">
+                Precio Especial Activo
+              </span>
+            </div>
+          )}
+
           {/* SECCIÓN 3 — SELECCIÓN DE TARIFA DE ENVÍO */}
           <div className="space-y-4">
             <h3 className="font-extrabold text-slate-950 text-xs border-b border-slate-100 pb-2 uppercase tracking-wide">
@@ -995,6 +1058,35 @@ export default function CreateOrder() {
               4. Recaudo y Pago Financiero (COD)
             </h3>
             
+            {/* Campo Nombre del producto con auto-llenado de catálogo */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  <ShoppingBag size={12} className="text-[#d3121a]" /> Nombre del producto (Opcional)
+                </span>
+                {storeCatalog.length > 0 && (
+                  <span className="text-[9px] text-[#d3121a] font-bold">
+                    ⚡ {storeCatalog.length} en catálogo
+                  </span>
+                )}
+              </label>
+              <div className="relative">
+                <input 
+                  type="text" 
+                  list="store-products-list"
+                  placeholder="Ej. Zapatos, Vestido, Audífonos..."
+                  value={productName}
+                  onChange={(e) => handleProductNameChange(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
+                />
+                <datalist id="store-products-list">
+                  {storeCatalog.map(p => (
+                    <option key={p.id} value={p.name}>RD${p.price.toLocaleString()} — {p.name}</option>
+                  ))}
+                </datalist>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
               
               <label className="flex items-center gap-3 cursor-pointer select-none">

@@ -64,10 +64,18 @@ export interface ZoneSurcharge {
   surcharge: number;               // Extra RD$ added to base shipping cost
 }
 
+export interface StoreSpecialPrice {
+  storeId: string;
+  storeName: string;
+  baseShippingCost: number;
+  expressShippingCost?: number;
+}
+
 export interface PricingSettings {
   id: string;
   baseShippingCost: number;        // Default delivery tariff (RD$)
   expressShippingCost?: number;     // Express delivery tariff (RD$)
+  specialStorePrices?: StoreSpecialPrice[]; // Custom tariffs per store (RD$)
   fulfillmentCosts: Record<string, number>; // key = packaging type, value = RD$
   zoneSurcharges: ZoneSurcharge[];
   beneficiaries: SettlementBeneficiary[];
@@ -412,6 +420,7 @@ export const DEFAULT_PRICING: PricingSettings = {
   id: 'default',
   baseShippingCost: 300,
   expressShippingCost: 450,
+  specialStorePrices: [],
   fulfillmentCosts: {
     sobre: 30,
     bolsa_seguridad: 40,
