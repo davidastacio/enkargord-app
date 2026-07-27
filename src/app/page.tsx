@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { 
@@ -20,21 +21,26 @@ import {
   HelpCircle,
   TrendingUp,
   Smartphone,
+  Menu,
+  X,
+  Play,
 } from 'lucide-react';
 
 export default function LandingPage() {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-[#F8F9FB] font-sans text-slate-800 antialiased flex flex-col justify-between scroll-smooth">
       
       {/* ==========================================
          HEADER / NAVBAR
          ========================================== */}
-      <header className="bg-white/90 backdrop-blur-md border-b border-[#E7E7EC] px-6 py-4 sticky top-0 z-50">
+      <header className="bg-white/95 backdrop-blur-md border-b border-[#E7E7EC] px-6 py-4 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           
           {/* Logo on the left */}
           <Link href="/" className="flex items-center justify-center">
-            <div className="relative h-12 w-[210px] sm:h-14 sm:w-[250px]">
+            <div className="relative h-11 w-[190px] sm:h-14 sm:w-[250px]">
               <Image 
                 src="/logo-horizontal.png" 
                 alt="EnkargoRD Logo" 
@@ -45,7 +51,7 @@ export default function LandingPage() {
             </div>
           </Link>
 
-          {/* Navigation links center */}
+          {/* Navigation links center (Desktop) */}
           <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
             <Link href="#" className="text-[#d3121a] hover:text-[#b00f14] transition-colors relative after:content-[''] after:absolute after:bottom-[-20px] after:left-0 after:right-0 after:h-[2px] after:bg-[#d3121a]">
               Inicio
@@ -72,15 +78,15 @@ export default function LandingPage() {
             </a>
           </nav>
 
-          {/* Auth Action Buttons right */}
-          <div className="flex items-center gap-3">
+          {/* Auth Action Buttons right (Desktop) */}
+          <div className="hidden md:flex items-center gap-3">
             <button
               onClick={() => {
                 if (typeof window !== 'undefined') {
                   window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
                 }
               }}
-              className="hidden sm:flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs py-2.5 px-4 rounded-xl transition-all shadow-sm"
+              className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs py-2.5 px-4 rounded-xl transition-all shadow-sm"
               title="Instalar EnkargoRD App en tu celular"
             >
               <Smartphone size={15} className="text-emerald-400" />
@@ -100,48 +106,142 @@ export default function LandingPage() {
             </Link>
           </div>
 
+          {/* Mobile Hamburger Button */}
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="md:hidden p-2 text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
+            aria-label="Abrir menú"
+          >
+            {isMobileMenuOpen ? <X size={26} /> : <Menu size={26} />}
+          </button>
+
         </div>
+
+        {/* Mobile Dropdown Menu Drawer */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden border-t border-[#E7E7EC] mt-4 pt-4 pb-6 space-y-4 animate-slide-down">
+            <nav className="flex flex-col space-y-3 font-bold text-sm text-slate-700 px-2">
+              <Link 
+                href="#" 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="py-2 text-[#d3121a]"
+              >
+                Inicio
+              </Link>
+              <a 
+                href="#como-funciona" 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="py-2 hover:text-slate-900"
+              >
+                Cómo funciona
+              </a>
+              <a 
+                href="#servicios" 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="py-2 hover:text-slate-900"
+              >
+                Servicios
+              </a>
+              <a 
+                href="#precios" 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="py-2 hover:text-slate-900"
+              >
+                Precios
+              </a>
+              <a 
+                href="#nosotros" 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="py-2 hover:text-slate-900"
+              >
+                Nosotros
+              </a>
+              <a 
+                href="https://wa.me/18296564603" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="py-2 hover:text-slate-900"
+              >
+                Contacto
+              </a>
+            </nav>
+
+            <div className="pt-2 border-t border-slate-100 flex flex-col gap-2.5">
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white font-extrabold text-xs py-3 rounded-xl shadow-sm"
+              >
+                <Smartphone size={16} className="text-emerald-400" />
+                <span>Instalar App Web</span>
+              </button>
+              
+              <div className="grid grid-cols-2 gap-2">
+                <Link 
+                  href="/login" 
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="w-full border border-[#d3121a] text-[#d3121a] font-bold text-xs py-3 rounded-xl text-center"
+                >
+                  Iniciar sesión
+                </Link>
+                <Link 
+                  href="/registro" 
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="w-full bg-[#d3121a] text-white font-bold text-xs py-3 rounded-xl text-center shadow-md shadow-red-100"
+                >
+                  Regístrate
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* ==========================================
          HERO SECTION
          ========================================== */}
-      <section className="px-6 py-12 md:py-20 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+      <section className="px-6 py-8 md:py-20 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-center">
         
         {/* Left Column Text */}
         <div className="space-y-6 lg:max-w-xl">
-          <div className="inline-flex items-center gap-2 bg-[#fee2e2] text-[#d3121a] px-3.5 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider">
+          <div className="inline-flex items-center gap-2 bg-[#fee2e2] text-[#d3121a] px-3.5 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wider">
             <span>⚡</span> Rápido. Seguro. Confiable.
           </div>
           
-          <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-slate-900 leading-[1.1] tracking-tight">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-slate-900 leading-[1.15] tracking-tight">
             Llevamos lo que importa, <span className="text-[#d3121a]">a donde importa.</span>
           </h2>
           
-          <p className="text-base md:text-lg text-slate-500 font-medium leading-relaxed">
+          <p className="text-sm sm:text-base md:text-lg text-slate-500 font-medium leading-relaxed">
             EnkargoRD es la plataforma de envíos que conecta personas y negocios con entregas rápidas, seguras y en tiempo real en todo el país.
           </p>
 
-          <div className="flex flex-wrap gap-4 pt-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 pt-2">
             <Link 
               href="/login" 
-              className="bg-[#d3121a] hover:bg-[#b00f14] text-white font-bold text-sm py-4 px-8 rounded-xl shadow-lg shadow-red-200 transition-all flex items-center gap-2"
+              className="w-full sm:w-auto bg-[#d3121a] hover:bg-[#b00f14] text-white font-extrabold text-sm py-4 px-8 rounded-2xl shadow-lg shadow-red-200 transition-all flex items-center justify-center gap-2 text-center"
             >
-              Crear envío
-              <ChevronRight size={16} />
+              <Package size={18} />
+              <span>Crear envío</span>
             </Link>
             <a 
-              href="#precios" 
-              className="bg-white hover:bg-slate-50 border border-[#E7E7EC] text-slate-700 font-bold text-sm py-4 px-8 rounded-xl transition-all"
+              href="#como-funciona" 
+              className="w-full sm:w-auto bg-white hover:bg-slate-50 border border-[#E7E7EC] text-slate-800 font-extrabold text-sm py-4 px-8 rounded-2xl transition-all shadow-sm flex items-center justify-center gap-2 text-center"
             >
-              Ver tarifas
+              <Play size={15} className="fill-slate-800 text-slate-800" />
+              <span>Ver cómo funciona</span>
             </a>
           </div>
         </div>
 
         {/* Right Column Image Composition */}
         <div className="relative w-full aspect-[4/3] max-w-lg lg:max-w-none mx-auto flex items-center justify-center">
-          <div className="absolute w-[80%] h-[80%] bg-[#fee2e2]/60 rounded-full blur-3xl -z-10"></div>
+          <div className="absolute w-[85%] h-[85%] bg-[#fee2e2]/60 rounded-full blur-3xl -z-10"></div>
           
           <div className="relative w-full h-full">
             <Image 
@@ -175,7 +275,7 @@ export default function LandingPage() {
             
             {/* Step 1 */}
             <div className="p-6 space-y-4 flex flex-col items-center">
-              <div className="w-14 h-14 bg-[#fee2e2] text-[#d3121a] rounded-2xl flex items-center justify-center font-bold text-xl shadow-sm">
+              <div className="w-14 h-14 bg-[#fee2e2] text-[#d3121a] rounded-2xl flex items-center justify-center font-bold text-xl shadow-sm relative">
                 1
               </div>
               <h4 className="font-extrabold text-slate-800 text-base">Crea tu envío</h4>
@@ -186,7 +286,7 @@ export default function LandingPage() {
 
             {/* Step 2 */}
             <div className="p-6 space-y-4 flex flex-col items-center">
-              <div className="w-14 h-14 bg-[#fee2e2] text-[#d3121a] rounded-2xl flex items-center justify-center font-bold text-xl shadow-sm">
+              <div className="w-14 h-14 bg-[#fee2e2] text-[#d3121a] rounded-2xl flex items-center justify-center font-bold text-xl shadow-sm relative">
                 2
               </div>
               <h4 className="font-extrabold text-slate-800 text-base">Asignamos tu courier</h4>
@@ -197,7 +297,7 @@ export default function LandingPage() {
 
             {/* Step 3 */}
             <div className="p-6 space-y-4 flex flex-col items-center">
-              <div className="w-14 h-14 bg-[#fee2e2] text-[#d3121a] rounded-2xl flex items-center justify-center font-bold text-xl shadow-sm">
+              <div className="w-14 h-14 bg-[#fee2e2] text-[#d3121a] rounded-2xl flex items-center justify-center font-bold text-xl shadow-sm relative">
                 3
               </div>
               <h4 className="font-extrabold text-slate-800 text-base">Entregamos</h4>
@@ -212,19 +312,80 @@ export default function LandingPage() {
       </section>
 
       {/* ==========================================
+         SECCIÓN DE BENEFICIOS (CARD GRID RECURSO MOBILES)
+         ========================================== */}
+      <section className="px-6 py-10 max-w-7xl mx-auto w-full">
+        <div className="bg-white border border-[#E7E7EC] rounded-3xl p-6 md:p-8 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
+          
+          {/* Benefit 1 */}
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-full border-2 border-red-500 text-red-500 flex items-center justify-center flex-shrink-0">
+              <ShieldCheck size={24} />
+            </div>
+            <div className="space-y-1">
+              <h5 className="font-extrabold text-sm text-slate-900">Seguridad garantizada</h5>
+              <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                Tus envíos están protegidos en cada paso del camino.
+              </p>
+            </div>
+          </div>
+
+          {/* Benefit 2 */}
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-full border-2 border-red-500 text-red-500 flex items-center justify-center flex-shrink-0">
+              <Clock size={24} />
+            </div>
+            <div className="space-y-1">
+              <h5 className="font-extrabold text-sm text-slate-900">Entregas rápidas</h5>
+              <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                Entregas el mismo día en tiempo récord.
+              </p>
+            </div>
+          </div>
+
+          {/* Benefit 3 */}
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-full border-2 border-red-500 text-red-500 flex items-center justify-center flex-shrink-0">
+              <MapPin size={24} />
+            </div>
+            <div className="space-y-1">
+              <h5 className="font-extrabold text-sm text-slate-900">Seguimiento en tiempo real</h5>
+              <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                Rastrea tu pedido en vivo desde nuestra plataforma.
+              </p>
+            </div>
+          </div>
+
+          {/* Benefit 4 */}
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-full border-2 border-red-500 text-red-500 flex items-center justify-center flex-shrink-0">
+              <PhoneCall size={24} />
+            </div>
+            <div className="space-y-1">
+              <h5 className="font-extrabold text-sm text-slate-900">Soporte 24/7</h5>
+              <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                Estamos disponibles para ayudarte siempre.
+              </p>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      {/* ==========================================
          SECCIÓN DE SERVICIOS (#servicios)
          ========================================== */}
-      <section id="servicios" className="py-20 px-6 bg-[#F8F9FB]">
+      <section id="servicios" className="py-16 md:py-20 px-6 bg-[#F8F9FB]">
         <div className="max-w-7xl mx-auto space-y-12">
           
           <div className="text-center space-y-3 max-w-2xl mx-auto">
             <span className="text-xs font-bold text-[#d3121a] uppercase tracking-widest block">
               NUESTROS SERVICIOS
             </span>
-            <h3 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
+            <h3 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
               Soluciones logísticas diseñadas para hacer crecer tu negocio
             </h3>
-            <p className="text-sm text-slate-500 font-medium leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed">
               Desde envíos locales en la ciudad hasta entregas interprovinciales a cualquier rincón de República Dominicana.
             </p>
           </div>
@@ -307,17 +468,17 @@ export default function LandingPage() {
       {/* ==========================================
          SECCIÓN DE PRECIOS (#precios)
          ========================================== */}
-      <section id="precios" className="py-20 px-6 bg-white border-t border-b border-[#E7E7EC]">
+      <section id="precios" className="py-16 md:py-20 px-6 bg-white border-t border-b border-[#E7E7EC]">
         <div className="max-w-7xl mx-auto space-y-12">
           
           <div className="text-center space-y-3 max-w-2xl mx-auto">
             <span className="text-xs font-bold text-[#d3121a] uppercase tracking-widest block">
               TARIFAS TRANSPARENTES
             </span>
-            <h3 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
+            <h3 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
               Precios fijos sin sorpresas ni letras pequeñas
             </h3>
-            <p className="text-sm text-slate-500 font-medium leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed">
               Disfruta de tarifas sencillas adaptadas a la ubicación de tu cliente.
             </p>
           </div>
@@ -325,7 +486,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             
             {/* Plan 1: Santo Domingo */}
-            <div className="bg-[#F8F9FB] border border-[#E7E7EC] rounded-3xl p-8 space-y-6 flex flex-col justify-between hover:border-slate-300 transition-all relative">
+            <div className="bg-[#F8F9FB] border border-[#E7E7EC] rounded-3xl p-6 sm:p-8 space-y-6 flex flex-col justify-between hover:border-slate-300 transition-all relative">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="bg-red-50 text-[#d3121a] px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
@@ -373,7 +534,7 @@ export default function LandingPage() {
             </div>
 
             {/* Plan 2: Envío Global / Nacional */}
-            <div className="bg-slate-900 text-white rounded-3xl p-8 space-y-6 flex flex-col justify-between shadow-xl relative overflow-hidden">
+            <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-8 space-y-6 flex flex-col justify-between shadow-xl relative overflow-hidden">
               <div className="absolute top-0 right-0 bg-[#d3121a] text-white px-4 py-1 rounded-bl-xl text-[10px] font-extrabold uppercase tracking-widest">
                 Recomendado
               </div>
@@ -434,42 +595,42 @@ export default function LandingPage() {
       {/* ==========================================
          SECCIÓN NOSOTROS (#nosotros)
          ========================================== */}
-      <section id="nosotros" className="py-20 px-6 bg-[#F8F9FB]">
+      <section id="nosotros" className="py-16 md:py-20 px-6 bg-[#F8F9FB]">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           
           <div className="space-y-6">
             <span className="text-xs font-bold text-[#d3121a] uppercase tracking-widest block">
               SOBRE NOSOTROS
             </span>
-            <h3 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">
+            <h3 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">
               La plataforma de logística moderna hecha para República Dominicana
             </h3>
-            <p className="text-sm text-slate-500 font-medium leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed">
               En EnkargoRD combinamos tecnología avanzada, seguimiento satelital en vivo y una red de repartidores capacitados para que comercios y particulares realicen entregas sin complicaciones.
             </p>
             
-            <div className="grid grid-cols-2 gap-6 pt-2">
+            <div className="grid grid-cols-2 gap-4 sm:gap-6 pt-2">
               <div className="bg-white border border-[#E7E7EC] p-4 rounded-2xl">
-                <span className="block text-3xl font-black text-[#d3121a]">15k+</span>
+                <span className="block text-2xl sm:text-3xl font-black text-[#d3121a]">15k+</span>
                 <span className="text-xs font-bold text-slate-600 mt-1 block">Envíos completados</span>
               </div>
               <div className="bg-white border border-[#E7E7EC] p-4 rounded-2xl">
-                <span className="block text-3xl font-black text-slate-900">31</span>
+                <span className="block text-2xl sm:text-3xl font-black text-slate-900">31</span>
                 <span className="text-xs font-bold text-slate-600 mt-1 block">Provincias conectadas</span>
               </div>
               <div className="bg-white border border-[#E7E7EC] p-4 rounded-2xl">
-                <span className="block text-3xl font-black text-slate-900">99.4%</span>
+                <span className="block text-2xl sm:text-3xl font-black text-slate-900">99.4%</span>
                 <span className="text-xs font-bold text-slate-600 mt-1 block">Efectividad de entrega</span>
               </div>
               <div className="bg-white border border-[#E7E7EC] p-4 rounded-2xl">
-                <span className="block text-3xl font-black text-[#d3121a]">24/7</span>
+                <span className="block text-2xl sm:text-3xl font-black text-[#d3121a]">24/7</span>
                 <span className="text-xs font-bold text-slate-600 mt-1 block">Atención al cliente</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-white border border-[#E7E7EC] rounded-3xl p-8 shadow-sm space-y-6">
-            <h4 className="text-xl font-extrabold text-slate-900">¿Por qué los comercios nos eligen?</h4>
+          <div className="bg-white border border-[#E7E7EC] rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+            <h4 className="text-lg sm:text-xl font-extrabold text-slate-900">¿Por qué los comercios nos eligen?</h4>
             <div className="space-y-4 text-xs font-semibold text-slate-600">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-red-50 text-[#d3121a] rounded-lg mt-0.5">
@@ -512,67 +673,6 @@ export default function LandingPage() {
                 Hablar con un asesor comercial
                 <ArrowRight size={14} />
               </a>
-            </div>
-          </div>
-
-        </div>
-      </section>
-
-      {/* ==========================================
-         SECCIÓN DE BENEFICIOS (FRANJA ROJA)
-         ========================================== */}
-      <section className="bg-[#d3121a] text-white py-8 px-6">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8">
-          
-          {/* Benefit 1 */}
-          <div className="flex items-start gap-4">
-            <div className="p-2.5 bg-white/10 rounded-xl mt-1 text-white">
-              <ShieldCheck size={20} />
-            </div>
-            <div>
-              <h5 className="font-bold text-sm">Seguridad garantizada</h5>
-              <p className="text-[11px] text-white/80 mt-1 font-medium leading-relaxed">
-                Tus envíos están protegidos cada paso del camino.
-              </p>
-            </div>
-          </div>
-
-          {/* Benefit 2 */}
-          <div className="flex items-start gap-4">
-            <div className="p-2.5 bg-white/10 rounded-xl mt-1 text-white">
-              <Clock size={20} />
-            </div>
-            <div>
-              <h5 className="font-bold text-sm">Entregas rápidas</h5>
-              <p className="text-[11px] text-white/80 mt-1 font-medium leading-relaxed">
-                Entregas el mismo día en tiempo récord.
-              </p>
-            </div>
-          </div>
-
-          {/* Benefit 3 */}
-          <div className="flex items-start gap-4">
-            <div className="p-2.5 bg-white/10 rounded-xl mt-1 text-white">
-              <MapPin size={20} />
-            </div>
-            <div>
-              <h5 className="font-bold text-sm">Seguimiento en tiempo real</h5>
-              <p className="text-[11px] text-white/80 mt-1 font-medium leading-relaxed">
-                Rastrea tu pedido en vivo desde nuestra plataforma.
-              </p>
-            </div>
-          </div>
-
-          {/* Benefit 4 */}
-          <div className="flex items-start gap-4">
-            <div className="p-2.5 bg-white/10 rounded-xl mt-1 text-white">
-              <PhoneCall size={20} />
-            </div>
-            <div>
-              <h5 className="font-bold text-sm">Soporte 24/7</h5>
-              <p className="text-[11px] text-white/80 mt-1 font-medium leading-relaxed">
-                Estamos disponibles para ayudarte siempre.
-              </p>
             </div>
           </div>
 
