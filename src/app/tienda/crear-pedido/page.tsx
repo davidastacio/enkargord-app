@@ -1233,7 +1233,7 @@ export default function CreateOrder() {
               </div>
 
               <div className="flex justify-between">
-                <span>Valor del producto:</span>
+                <span>Total a cobrar al cliente (COD):</span>
                 <span className="text-slate-950 font-bold">RD${(requiresCod ? parseFloat(collectAmount) || 0 : 0).toLocaleString()}</span>
               </div>
 
@@ -1249,13 +1249,14 @@ export default function CreateOrder() {
                 </span>
               </div>
 
-              <div className="flex justify-between border-t border-slate-100 pt-3 text-sm font-extrabold text-slate-950">
-                <span>Tarifa de envío:</span>
-                <span className="text-[#d3121a]">RD${activeShippingFee.toLocaleString()}</span>
+              <div className="flex justify-between border-t border-slate-100 pt-3 text-xs font-bold text-slate-600">
+                <span>Tarifa de envío EnkargoRD:</span>
+                <span className="text-[#d3121a]">- RD${activeShippingFee.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between rounded-xl bg-emerald-50 px-3 py-3 text-sm font-extrabold text-emerald-800">
-                <span>Total a recaudar al cliente:</span>
-                <span>RD${((requiresCod ? parseFloat(collectAmount) || 0 : 0) + activeShippingFee).toLocaleString()}</span>
+
+              <div className="flex justify-between rounded-xl bg-emerald-50 px-3.5 py-3 text-sm font-extrabold text-emerald-800 border border-emerald-200">
+                <span>Neto a liquidar a tu tienda:</span>
+                <span>RD${Math.max(0, (requiresCod ? parseFloat(collectAmount) || 0 : 0) - activeShippingFee).toLocaleString()}</span>
               </div>
 
             </div>
