@@ -263,6 +263,10 @@ export default function AdminDashboard() {
   const [cFormPlate, setCFormPlate] = useState('');
   const [cFormUser, setCFormUser] = useState('');
 
+  // Dispatch Inbox Pagination State
+  const [dispatchPage, setDispatchPage] = useState(1);
+  const dispatchRowsPerPage = 10;
+
   // Hydrate states from Firestore & localstorage on Client Side mount
   useEffect(() => {
     // 0. Resolve store names from Supabase
@@ -715,6 +719,11 @@ export default function AdminDashboard() {
     { name: 'No Contesta', value: orders.filter(o => o.status === 'no_contesta').length, color: '#ef4444' }
   ].filter(item => item.value > 0);
 
+  // Dispatch Inbox Pagination Calculations
+  const pendingDispatchOrders = orders.filter(o => o.status === 'pending' || o.courierName === 'No asignado');
+  const totalDispatchPages = Math.max(1, Math.ceil(pendingDispatchOrders.length / dispatchRowsPerPage));
+  const paginatedDispatchOrders = pendingDispatchOrders.slice((dispatchPage - 1) * dispatchRowsPerPage, dispatchPage * dispatchRowsPerPage);
+
   // Leaflet format active couriers array mapping directly from couriers database
   const leafletActiveCouriers = courierLocations
     .filter((location) => location.trackingStatus === 'active')
@@ -1124,6 +1133,11 @@ export default function AdminDashboard() {
                       Asigna manualmente motoristas de la flota a los envíos entrantes de las tiendas
                     </p>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-extrabold bg-[#d3121a]/10 text-[#d3121a] px-3 py-1.5 rounded-xl border border-[#d3121a]/20">
+                      {pendingDispatchOrders.length} pedidos sin despachar
+                    </span>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto custom-scrollbar">
@@ -1141,14 +1155,14 @@ export default function AdminDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#E7E7EC] text-xs">
-                      {orders.filter(o => o.status === 'pending' || o.courierName === 'No asignado').length === 0 ? (
+                      {pendingDispatchOrders.length === 0 ? (
                         <tr>
                           <td colSpan={8} className="py-8 text-center text-slate-400 font-medium">
                             No hay envíos pendientes por asignar repartidor.
                           </td>
                         </tr>
                       ) : (
-                        orders.filter(o => o.status === 'pending' || o.courierName === 'No asignado').map(order => (
+                        paginatedDispatchOrders.map(order => (
                           <tr key={order.id} className="hover:bg-slate-50/50 transition-colors">
                             <td className="py-4 px-6 font-bold text-slate-900">#{order.trackingId}</td>
                             <td className="py-4 px-6 font-semibold text-slate-700">{order.storeName}</td>
@@ -1215,6 +1229,34 @@ export default function AdminDashboard() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Dispatch Inbox Pagination Footer */}
+                {pendingDispatchOrders.length > 0 && (
+                  <div className="p-4 border-t border-[#E7E7EC] flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50">
+                    <span className="text-xs text-slate-500 font-semibold">
+                      Mostrando <strong className="text-slate-900">{(dispatchPage - 1) * dispatchRowsPerPage + 1}</strong> a <strong className="text-slate-900">{Math.min(dispatchPage * dispatchRowsPerPage, pendingDispatchOrders.length)}</strong> de <strong className="text-slate-900">{pendingDispatchOrders.length}</strong> pedidos pendientes
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        disabled={dispatchPage === 1}
+                        onClick={() => setDispatchPage((p) => Math.max(1, p - 1))}
+                        className="px-3.5 py-1.5 border border-[#E7E7EC] rounded-xl bg-white hover:bg-slate-50 disabled:opacity-40 text-xs font-bold text-slate-700 transition-all shadow-sm"
+                      >
+                        Anterior
+                      </button>
+                      <span className="text-xs font-extrabold text-slate-700">
+                        Página {dispatchPage} de {totalDispatchPages}
+                      </span>
+                      <button
+                        disabled={dispatchPage >= totalDispatchPages}
+                        onClick={() => setDispatchPage((p) => Math.min(totalDispatchPages, p + 1))}
+                        className="px-3.5 py-1.5 border border-[#E7E7EC] rounded-xl bg-white hover:bg-slate-50 disabled:opacity-40 text-xs font-bold text-slate-700 transition-all shadow-sm"
+                      >
+                        Siguiente
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Lower segment: satellite map & donut chart status */}
