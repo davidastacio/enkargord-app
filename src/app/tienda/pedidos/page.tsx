@@ -98,16 +98,7 @@ export default function StoreOrdersList() {
         // 1. Delete from Supabase
         await deleteSupabaseOrder(id);
 
-        // 2. Sync localStorage cache
-        const local = localStorage.getItem('enkargord_orders');
-        if (local) {
-          const parsed = JSON.parse(local);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const filtered = parsed.filter((o: any) => (o.tracking !== id && o.trackingId !== id));
-          localStorage.setItem('enkargord_orders', JSON.stringify(filtered));
-        }
-
-        // 3. Fallback manual update in state
+        // Supabase remains the only source of truth.
         setOrders(orders.filter(o => o.trackingId !== id));
         alert(`Orden #${id} cancelada.`);
       } catch (error) {

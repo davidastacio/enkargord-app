@@ -52,7 +52,7 @@ export function toCourierOrder(
     financials: {
       orderCollectionAmount: collectionAmount,
       shippingCost,
-      storeProductAmount: collectionAmount,
+      storeProductAmount: Math.max(0, collectionAmount - shippingCost),
       courierCommission:
         raw.financials?.courierCommission !== undefined
           ? number(raw.financials.courierCommission)

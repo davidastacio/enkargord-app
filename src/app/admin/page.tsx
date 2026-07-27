@@ -109,98 +109,6 @@ interface Courier {
   activeOrderCount?: number;
 }
 
-// Initial Data Constants
-const DEFAULT_ORDERS: Order[] = [
-  {
-    id: "ENK-1250",
-    trackingId: "ENK-1250",
-    status: "in_transit",
-    storeId: "STORE_01",
-    storeName: "Moda Express RD",
-    courierName: "Carlos M.",
-    time: "10:30 AM",
-    createdAt: "2026-07-20T14:30:00Z",
-    customer: { name: "Juan Pérez", phone: "+18095551234" },
-    deliveryAddress: { addressLine: "Av. Churchill #12", city: "Naco (Santo Domingo)", coordinates: { lat: 18.4795, lng: -69.9326 } },
-    fulfillment: true,
-    financials: {
-      productCost: 1800,
-      shippingCost: 250,
-      fulfillmentCost: 40,
-      totalCollected: 2090,
-      storeOwnerAmount: 1800,
-      creatorCommission: 50,
-      transportadoraCommission: 200
-    }
-  },
-  {
-    id: "ENK-1249",
-    trackingId: "ENK-1249",
-    status: "delivered",
-    storeId: "STORE_01",
-    storeName: "Moda Express RD",
-    courierName: "Luis A.",
-    time: "10:15 AM",
-    createdAt: "2026-07-20T14:15:00Z",
-    customer: { name: "María Rodríguez", phone: "+18295555678" },
-    deliveryAddress: { addressLine: "Calle El Sol #45", city: "Santiago - Centro", coordinates: { lat: 18.4556, lng: -69.9489 } },
-    fulfillment: false,
-    financials: {
-      productCost: 3500,
-      shippingCost: 300,
-      fulfillmentCost: 0,
-      totalCollected: 3800,
-      storeOwnerAmount: 3500,
-      creatorCommission: 50,
-      transportadoraCommission: 250
-    }
-  },
-  {
-    id: "ENK-1248",
-    trackingId: "ENK-1248",
-    status: "pending",
-    storeId: "STORE_01",
-    storeName: "Moda Express RD",
-    courierName: "No asignado",
-    time: "09:58 AM",
-    createdAt: "2026-07-20T13:58:00Z",
-    customer: { name: "Pedro García", phone: "+18495559012" },
-    deliveryAddress: { addressLine: "Residencial Alameda", city: "Piantini (Santo Domingo)", coordinates: { lat: 18.4746, lng: -69.9372 } },
-    fulfillment: true,
-    financials: {
-      productCost: 1200,
-      shippingCost: 200,
-      fulfillmentCost: 40,
-      totalCollected: 1440,
-      storeOwnerAmount: 1200,
-      creatorCommission: 50,
-      transportadoraCommission: 150
-    }
-  },
-  {
-    id: "ENK-1247",
-    trackingId: "ENK-1247",
-    status: "in_transit",
-    storeId: "STORE_01",
-    storeName: "Moda Express RD",
-    courierName: "Yoselin V.",
-    time: "09:42 AM",
-    createdAt: "2026-07-20T13:42:00Z",
-    customer: { name: "Ana Martínez", phone: "+18095554321" },
-    deliveryAddress: { addressLine: "Calle Duarte #80", city: "Bella Vista (Santo Domingo)", coordinates: { lat: 18.4735, lng: -69.8860 } },
-    fulfillment: false,
-    financials: {
-      productCost: 2200,
-      shippingCost: 250,
-      fulfillmentCost: 0,
-      totalCollected: 2450,
-      storeOwnerAmount: 2200,
-      creatorCommission: 50,
-      transportadoraCommission: 200
-    }
-  }
-];
-
 const DEFAULT_COURIERS: Courier[] = [
   { id: "C-01", name: "Carlos M.", phone: "+18095551111", vehicle: "Motocicleta", plate: "K-123456", status: "Disponible" },
   { id: "C-02", name: "Luis A.", phone: "+18295552222", vehicle: "Motocicleta", plate: "K-654321", status: "Disponible" },
@@ -388,24 +296,6 @@ export default function AdminDashboard() {
     }, 4000);
   };
 
-  // Financial calculations helper
-  const calculateFinancials = (prodCost: number, shipCost: number, requiresFulfillment = false) => {
-    const fCost = requiresFulfillment ? 40 : 0;
-    const totalCollected = prodCost + shipCost + fCost;
-    const creatorCommission = shipCost > 0 ? 50 : 0;
-    const transportadoraCommission = shipCost > 0 ? Math.max(0, shipCost - creatorCommission) : 0;
-
-    return {
-      productCost: prodCost,
-      shippingCost: shipCost,
-      fulfillmentCost: fCost,
-      totalCollected,
-      storeOwnerAmount: prodCost,
-      creatorCommission,
-      transportadoraCommission
-    };
-  };
-
   // Dispatch unassigned order action handler
   const handleAssignCourier = async (orderId: string, courierName: string) => {
     if (!courierName) return;
@@ -478,19 +368,7 @@ export default function AdminDashboard() {
       // 1. Immediately update React state for instant UI re-render
       setOrders((prev) => prev.filter((o) => o.id !== orderId && o.trackingId !== orderId && o.id !== targetId && o.trackingId !== targetId));
 
-      // 2. Clean up local storage cache if present
-      const local = localStorage.getItem('enkargord_orders');
-      if (local) {
-        try {
-          const parsed = JSON.parse(local);
-          const filtered = parsed.filter((o: any) => o.id !== orderId && o.trackingId !== orderId && o.tracking !== orderId && o.id !== targetId && o.trackingId !== targetId);
-          localStorage.setItem('enkargord_orders', JSON.stringify(filtered));
-        } catch (e) {
-          console.error("Error updating local cache:", e);
-        }
-      }
-
-      // 3. Delete order from Supabase
+      // Delete order from Supabase
       await deleteSupabaseOrder(orderId);
       triggerToast(`Pedido #${targetId} eliminado correctamente.`);
     } catch (error) {
@@ -602,6 +480,8 @@ export default function AdminDashboard() {
       requiresCashOnDelivery: pCost > 0,
       collectionAmount: pCost,
       shippingCost: sCost,
+      priceIncludesShipping: true,
+      financialVersion: 2,
       paymentMethod: "cash",
       requiresFulfillment: false,
       courierId: null,
@@ -696,36 +576,6 @@ export default function AdminDashboard() {
   // Final Close Cashbox action (Tab 3)
   const handleCloseCashbox = async () => {
     triggerToast("Liquida cada tienda desde el panel de saldos para conservar el historial financiero.");
-    return;
-
-    const deliveredOrders = orders.filter(o => o.status === 'delivered');
-    const deliveredCount = deliveredOrders.length;
-    if (deliveredCount === 0) {
-      alert("No hay envíos completados listos para liquidar hoy.");
-      return;
-    }
-
-    if (confirm(`¿Proceder con el cuadre financiero de ${deliveredCount} envíos entregados hoy?`)) {
-      try {
-        // Clear delivered orders from database
-        const deletePromises = deliveredOrders.map(o => deleteSupabaseOrder(o.id));
-        await Promise.all(deletePromises);
-        
-        // Sync local storage fallback
-        const local = localStorage.getItem('enkargord_orders');
-        if (local) {
-          const parsed = JSON.parse(local!);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const updatedLocal = parsed.filter((o: any) => o.status !== 'delivered');
-          localStorage.setItem('enkargord_orders', JSON.stringify(updatedLocal));
-        }
-        
-        triggerToast("Cierre de caja finalizado. Liquidaciones registradas.");
-      } catch (error) {
-        console.error("Error closing cashbox in Firestore:", error);
-        alert("Error al finalizar el cuadre en la base de datos.");
-      }
-    }
   };
 
   // Tab dynamic styling
@@ -1151,7 +1001,7 @@ export default function AdminDashboard() {
                   ))}
                   {Object.keys(regionalOrders).length === 0 && (
                     <div className="md:col-span-2 xl:col-span-3 bg-white border border-dashed border-slate-200 rounded-2xl p-8 text-center text-sm font-semibold text-slate-400">
-                      No hay pedidos operativos registrados hoy.
+                      No hay pedidos registrados.
                     </div>
                   )}
                 </div>
@@ -1913,7 +1763,7 @@ export default function AdminDashboard() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Costo Producto (RD$)</label>
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Total a cobrar al cliente (RD$)</label>
                   <input 
                     type="number" 
                     required
@@ -1939,11 +1789,11 @@ export default function AdminDashboard() {
               <div className="p-4 bg-slate-50 border border-[#E7E7EC] rounded-2xl text-[11px] font-semibold text-slate-600 space-y-1.5 mt-2">
                 <div className="flex justify-between">
                   <span>Monto Total a Recaudar:</span>
-                  <span className="font-bold text-slate-900">RD${(parseFloat(formProdCost) + parseFloat(formShipCost) || 0).toLocaleString()}</span>
+                  <span className="font-bold text-slate-900">RD${(parseFloat(formProdCost) || 0).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-[10px] text-slate-400 font-medium">
                   <span>Neto Liquidación Tienda:</span>
-                  <span>RD${parseFloat(formProdCost) || 0}</span>
+                  <span>RD${Math.max(0, (parseFloat(formProdCost) || 0) - (parseFloat(formShipCost) || 0)).toLocaleString()}</span>
                 </div>
               </div>
 

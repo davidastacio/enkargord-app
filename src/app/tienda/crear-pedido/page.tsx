@@ -434,8 +434,6 @@ export default function CreateOrder() {
     setIsLoading(true);
 
     try {
-      const localOrders = localStorage.getItem('enkargord_orders');
-      const currentOrders = localOrders ? JSON.parse(localOrders) : [];
       const storeIdReal = profile?.storeId || profile?.uid || "STORE_01";
 
       // Secure and Unique Tracking Code Generation: ENK-YYYYMMDD-XXXXX
@@ -519,9 +517,6 @@ export default function CreateOrder() {
       }
 
       await createSupabaseOrder(newOrder);
-
-      const updated = [newOrder, ...currentOrders];
-      localStorage.setItem('enkargord_orders', JSON.stringify(updated));
 
       triggerToast("Pedido creado correctamente.");
       router.push(`/tienda/pedidos/${newOrder.id}`);

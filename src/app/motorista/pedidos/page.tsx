@@ -16,11 +16,12 @@ import {
   Filter,
   ExternalLink,
 } from 'lucide-react';
-import { DEFAULT_ORDERS, type CourierOrder, type OrderStatus, buildWhatsAppUrl, DEFAULT_WHATSAPP_TEMPLATES } from '@/data/courier';
+import { type CourierOrder, type OrderStatus, buildWhatsAppUrl, DEFAULT_WHATSAPP_TEMPLATES } from '@/data/courier';
 import { useAuth } from '@/hooks/useAuth';
 import { subscribeSupabaseOrders } from '@/lib/supabase/orders';
 import WhatsAppContactButton from '@/components/WhatsAppContactButton';
 import { downloadOrdersPdf } from '@/lib/orders/pdf-client';
+import { getOrderFinancials } from '@/lib/orders/financials';
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: string }> = {
   assigned:          { label: 'Asignado',            color: 'text-slate-700',   bg: 'bg-slate-100' },
@@ -45,9 +46,9 @@ function printLabel(order: CourierOrder) {
   const win = window.open('', '_blank', 'width=400,height=600');
   if (!win) return;
   const storeName = escapeHtml(order.storeName || 'Tienda');
-  const productAmount = Number(order.financials.orderCollectionAmount || 0);
+  const totalToCollect = Number(order.financials.orderCollectionAmount || 0);
   const shippingAmount = Number(order.financials.shippingCost || 0);
-  const totalToCollect = productAmount + shippingAmount;
+  const productAmount = Math.max(0, totalToCollect - shippingAmount);
   win.document.write(`
     <!DOCTYPE html>
     <html><head><title>Etiqueta ${escapeHtml(order.trackingId)}</title>
@@ -98,7 +99,7 @@ function printLabel(order: CourierOrder) {
           <div>
             <div class="caption">Total a cobrar</div>
             <div class="summary-value amount">RD$${totalToCollect.toLocaleString()}</div>
-            <div style="font-size:7px;color:#64748b;margin-top:2px;">Producto ${productAmount.toLocaleString()} + envío ${shippingAmount.toLocaleString()}</div>
+            <div style="font-size:7px;color:#64748b;margin-top:2px;">Monto total (incluye flete RD$${shippingAmount.toLocaleString()})</div>
           </div>
         </div>
         <div class="footer"><span>${escapeHtml(new Date(order.createdAt).toLocaleDateString('es-DO'))}</span><span>Gestionado por EnkargoRD</span></div>
@@ -123,6 +124,7 @@ export default function PedidosPage() {
     if (profile?.courierId) {
       const unsubscribe = subscribeSupabaseOrders({ courierId: profile.courierId }, (supabaseOrders) => {
         const firestoreOrders = supabaseOrders.map((o: any) => {
+          const financials = getOrderFinancials(o);
           const mappedStatus = o.status === 'customer_unreachable' ? 'no_answer' : o.status;
           return {
             id: o.id,
@@ -152,15 +154,15 @@ export default function PedidosPage() {
                 lng: o.longitude || -69.9326
               }
             },
-            amountCollected: o.collectionAmount || 0,
+            amountCollected: Number(o.amountCollected ?? o.collectedAmount ?? 0),
             fulfillment: {
               required: o.requiresFulfillment || false
             },
             financials: {
-              orderCollectionAmount: o.collectionAmount || 0,
-              shippingCost: o.shippingCost || 0,
+              orderCollectionAmount: financials.totalCollected,
+              shippingCost: financials.shippingCost,
               courierCommission: 100, // Comisión simulada
-              storeProductAmount: o.collectionAmount || 0,
+              storeProductAmount: financials.netStoreAmount,
             }
           };
         });
@@ -171,9 +173,7 @@ export default function PedidosPage() {
 
       return () => unsubscribe();
     } else {
-      // Fallback
-      const stored = localStorage.getItem('enkargord_courier_orders');
-      if (stored) setOrders(JSON.parse(stored));
+      setOrders([]);
     }
   }, [profile]);
 
@@ -261,7 +261,7 @@ export default function PedidosPage() {
         {filtered.length === 0 && (
           <div className="bg-white border border-[#E7E7EC] rounded-2xl p-8 text-center">
             <Package size={36} className="text-slate-300 mx-auto mb-3" />
-            <p className="font-bold text-slate-500">No se encontraron pedidos</p>
+            <p className="font-bold text-slate-500">No hay pedidos registrados</p>
           </div>
         )}
         {filtered.map((order) => {
@@ -309,10 +309,7 @@ export default function PedidosPage() {
               {/* Financial & Fulfillment badges */}
               <div className="flex flex-wrap items-center gap-2 mb-4">
                 <span className="text-xs font-extrabold bg-[#fee2e2] text-[#d3121a] px-2.5 py-1 rounded-full">
-                  RD${(
-                    Number(order.financials.orderCollectionAmount || 0)
-                    + Number(order.financials.shippingCost || 0)
-                  ).toLocaleString()}
+                  RD${Number(order.financials.orderCollectionAmount || 0).toLocaleString()}
                 </span>
                 {order.fulfillment.required && (
                   <span className="text-[10px] font-bold bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full">

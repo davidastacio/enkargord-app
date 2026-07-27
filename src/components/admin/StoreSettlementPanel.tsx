@@ -100,6 +100,10 @@ export default function StoreSettlementPanel() {
         <div className="flex items-center justify-center gap-2 py-12 text-xs font-bold text-slate-400">
           <Loader2 size={18} className="animate-spin text-[#d3121a]" /> Calculando saldos...
         </div>
+      ) : balances.length === 0 ? (
+        <div className="p-10 text-center text-sm font-semibold text-slate-500">
+          No hay pedidos registrados.
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 p-6 xl:grid-cols-2">
           {balances.map((balance) => (

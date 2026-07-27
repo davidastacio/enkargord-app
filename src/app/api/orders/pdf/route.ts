@@ -53,9 +53,9 @@ async function drawLabel(
   const district = clean(metadata.municipalDistrictName || metadata.municipal_district_name);
   const reference = clean(order.reference || metadata.reference);
   const address = clean(order.formatted_address || order.street);
-  const productAmount = Number(order.collection_amount || 0);
+  const totalToCollect = Number(order.collection_amount || 0);
   const shippingAmount = Number(order.shipping_cost || 0);
-  const totalToCollect = productAmount + shippingAmount;
+  const productAmount = Math.max(0, totalToCollect - shippingAmount);
   const isPrepaid = Boolean(metadata.alreadyPaid);
   const tracking = clean(order.tracking);
   const destination = [order.sector_name, district, order.municipality_name, order.province_name]
@@ -150,11 +150,11 @@ function drawOrderDocument(page: PDFPage, order: Record<string, any>, font: PDFF
   field(page, font, bold, "Region logistica", logisticsRegion(order.province_name), 320, 245, 220);
   
   if (hideAmounts) {
-    page.drawText("Recaudo: ***", { x: 42, y: 155, size: 18, font: bold });
-    page.drawText("Envio: ***", { x: 42, y: 125, size: 12, font });
+    page.drawText("Total Recaudo: ***", { x: 42, y: 155, size: 18, font: bold });
+    page.drawText("Envio incluido: ***", { x: 42, y: 125, size: 12, font });
   } else {
-    page.drawText(`Recaudo: RD$${Number(order.collection_amount || 0).toLocaleString("en-US")}`, { x: 42, y: 155, size: 18, font: bold });
-    page.drawText(`Envio: RD$${Number(order.shipping_cost || 0).toLocaleString("en-US")}`, { x: 42, y: 125, size: 12, font });
+    page.drawText(`Total Recaudo (COD): RD$${Number(order.collection_amount || 0).toLocaleString("en-US")}`, { x: 42, y: 155, size: 18, font: bold });
+    page.drawText(`Envio incluido: RD$${Number(order.shipping_cost || 0).toLocaleString("en-US")}`, { x: 42, y: 125, size: 12, font });
   }
   
   page.drawText(`Generado: ${new Date().toLocaleString("es-DO")}`, { x: 42, y: 55, size: 8, font, color: rgb(0.45, 0.5, 0.58) });

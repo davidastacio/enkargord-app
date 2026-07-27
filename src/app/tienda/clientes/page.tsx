@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Search, User, Phone, Mail, Award, Loader2, Package } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { subscribeSupabaseOrders } from '@/lib/supabase/orders';
+import { getOrderFinancials } from '@/lib/orders/financials';
 
 interface ClientItem {
   name: string;
@@ -33,7 +34,7 @@ export default function StoreClients() {
           const phone = o.customerPhone || 'N/A';
           const email = o.customerEmail || 'N/A';
           const orderDate = o.createdAt ? o.createdAt.split('T')[0] : 'N/A';
-          const amount = (o.collectionAmount || 0) + (o.shippingCost || 0);
+          const amount = getOrderFinancials(o).totalCollected;
 
           if (!clientMap[name]) {
             clientMap[name] = {

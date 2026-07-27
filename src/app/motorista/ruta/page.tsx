@@ -180,8 +180,7 @@ export default function RutaPage() {
     setActionSubmitting(true);
     try {
       const nowStr = new Date().toISOString();
-      const expectedAmount =
-        Number(currentOrder.collectionAmount || 0) + Number(currentOrder.shippingCost || 0);
+      const expectedAmount = Number(currentOrder.collectionAmount || 0);
       const actual = actionType === 'delivered' ? (parseFloat(collectedAmount) || 0) : 0;
 
       // Update Order Status in Firestore
@@ -403,8 +402,8 @@ export default function RutaPage() {
         </div>
 
         <div className="flex items-center gap-2 pt-2">
-          <span className="text-2xl font-extrabold">RD${(Number(currentOrder.collectionAmount || 0) + Number(currentOrder.shippingCost || 0)).toLocaleString()}</span>
-          <span className="text-[10px] font-bold text-red-200 uppercase tracking-widest">total producto + envío</span>
+          <span className="text-2xl font-extrabold">RD${Number(currentOrder.collectionAmount || 0).toLocaleString()}</span>
+          <span className="text-[10px] font-bold text-red-200 uppercase tracking-widest">total a cobrar (envío incluido)</span>
         </div>
 
         {/* Quick contact */}
@@ -480,7 +479,7 @@ export default function RutaPage() {
                   required
                   value={collectedAmount}
                   onChange={(e) => setCollectedAmount(e.target.value)}
-                  placeholder={String(Number(currentOrder.collectionAmount || 0) + Number(currentOrder.shippingCost || 0))}
+                  placeholder={String(Number(currentOrder.collectionAmount || 0))}
                   className="w-full px-3 py-2.5 text-xs border border-[#E7E7EC] rounded-xl focus:outline-none font-bold"
                 />
               </div>

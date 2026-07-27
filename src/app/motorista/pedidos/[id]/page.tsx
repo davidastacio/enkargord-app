@@ -97,9 +97,7 @@ export default function PedidoDetallePage() {
           return;
         }
         setOrder(data);
-        setCollectedAmount(
-          String(Number(data.collectionAmount || 0) + Number(data.shippingCost || 0)),
-        );
+        setCollectedAmount(String(Number(data.collectionAmount || 0)));
       } else {
         alert('El pedido no existe.');
         router.push('/motorista/pedidos');
@@ -207,7 +205,7 @@ export default function PedidoDetallePage() {
   const handleDeliveredSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const expected = Number(order.collectionAmount || 0) + Number(order.shippingCost || 0);
+    const expected = Number(order.collectionAmount || 0);
     const actual = parseFloat(collectedAmount) || 0;
 
     if (actual < 0) {

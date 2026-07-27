@@ -21,7 +21,6 @@ import {
   Zap,
 } from 'lucide-react';
 import {
-  DEFAULT_ORDERS,
   DEFAULT_PRICING,
   type CourierOrder,
   type OrderStatus,
@@ -31,6 +30,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { subscribeSupabaseOrders } from '@/lib/supabase/orders';
 import WhatsAppContactButton from '@/components/WhatsAppContactButton';
+import { getOrderFinancials } from '@/lib/orders/financials';
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
   assigned:          'Asignado',
@@ -56,6 +56,7 @@ export default function MotoristaHome() {
     if (profile?.courierId) {
       const unsubscribe = subscribeSupabaseOrders({ courierId: profile.courierId }, (supabaseOrders) => {
         const firestoreOrders = supabaseOrders.map((o: any) => {
+          const financials = getOrderFinancials(o);
           const mappedStatus = o.status === 'customer_unreachable' ? 'no_answer' : o.status;
           return {
             id: o.id,
@@ -90,9 +91,10 @@ export default function MotoristaHome() {
               required: o.requiresFulfillment || false
             },
             financials: {
-              orderCollectionAmount: o.collectionAmount || 0,
+              orderCollectionAmount: financials.totalCollected,
+              shippingCost: financials.shippingCost,
               courierCommission: 100, // Comisión simulada
-              storeProductAmount: o.collectionAmount || 0,
+              storeProductAmount: financials.netStoreAmount,
             }
           };
         });
@@ -106,11 +108,7 @@ export default function MotoristaHome() {
 
       return () => unsubscribe();
     } else {
-      // Fallback local storage
-      const stored = localStorage.getItem('enkargord_courier_orders');
-      if (stored) {
-        setOrders(JSON.parse(stored));
-      }
+      setOrders([]);
       const routeState = localStorage.getItem('enkargord_route_active');
       if (routeState === 'true') setRouteActive(true);
     }
@@ -303,8 +301,12 @@ export default function MotoristaHome() {
       ) : (
         <div className="bg-white border border-[#E7E7EC] rounded-2xl p-8 text-center shadow-sm">
           <CheckCircle size={40} className="text-emerald-400 mx-auto mb-3" />
-          <p className="font-bold text-slate-700">¡No hay entregas pendientes!</p>
-          <p className="text-sm text-slate-400 mt-1">Todas las entregas han sido procesadas.</p>
+          <p className="font-bold text-slate-700">
+            {myOrders.length === 0 ? 'No hay pedidos registrados' : '¡No hay entregas pendientes!'}
+          </p>
+          <p className="text-sm text-slate-400 mt-1">
+            {myOrders.length === 0 ? 'Los pedidos asignados aparecerán aquí.' : 'Todas las entregas han sido procesadas.'}
+          </p>
         </div>
       )}
 
@@ -344,6 +346,11 @@ export default function MotoristaHome() {
           </Link>
         </div>
         <div className="divide-y divide-[#E7E7EC]">
+          {myOrders.length === 0 && (
+            <p className="px-4 py-8 text-center text-xs font-semibold text-slate-400">
+              No hay pedidos registrados.
+            </p>
+          )}
           {myOrders.slice(0, 4).map((order) => (
             <div key={order.id} className="flex items-center gap-3 px-4 py-3">
               <div className={`w-2 h-2 rounded-full flex-shrink-0 ${

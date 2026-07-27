@@ -47,10 +47,8 @@ export async function POST(request: Request) {
         orderId: order.id,
         trackingId: order.tracking,
         storeName: metadata.storeName || "Tienda EnkargoRD",
-        amountCollected: Number(
-          metadata.amountCollected ?? Number(order.collection_amount) + shippingCost,
-        ),
-        storeAmount: Number(order.collection_amount),
+        amountCollected: Number(metadata.amountCollected ?? order.collection_amount),
+        storeAmount: Math.max(0, Number(order.collection_amount) - shippingCost),
         courierCommission: commission,
         beneficiaryAmounts: metadata.financials?.beneficiaryBreakdown ?? [],
         shippingCost,

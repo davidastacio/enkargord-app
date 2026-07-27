@@ -15,6 +15,7 @@ import {
 import { Download, Loader2, Package, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { subscribeSupabaseOrders } from '@/lib/supabase/orders';
+import { getOrderFinancials } from '@/lib/orders/financials';
 
 export default function StoreReports() {
   const { profile } = useAuth() as any;
@@ -44,7 +45,7 @@ export default function StoreReports() {
   const deliveredOrders = orders.filter(o => o.status === 'delivered');
   const deliveredCount = deliveredOrders.length;
   const successRate = totalOrders > 0 ? ((deliveredCount / totalOrders) * 100).toFixed(1) : '0';
-  const totalCodCollected = deliveredOrders.reduce((sum, o) => sum + (o.collectionAmount || 0) + (o.shippingCost || 0), 0);
+  const totalCodCollected = deliveredOrders.reduce((sum, o) => sum + getOrderFinancials(o).netStoreAmount, 0);
 
   // Group by creation date (last 7 days or entries)
   const dateGroups: Record<string, { ventas: number; entregas: number }> = {};
@@ -56,7 +57,7 @@ export default function StoreReports() {
     }
     if (o.status === 'delivered') {
       dateGroups[dateStr].entregas += 1;
-      dateGroups[dateStr].ventas += (o.collectionAmount || 0) + (o.shippingCost || 0);
+      dateGroups[dateStr].ventas += getOrderFinancials(o).netStoreAmount;
     }
   });
 
@@ -70,14 +71,14 @@ export default function StoreReports() {
       alert("No hay envíos para exportar.");
       return;
     }
-    const headers = ["ID", "Cliente", "Teléfono", "Dirección", "Estado", "Monto", "Fecha"];
+    const headers = ["ID", "Cliente", "Teléfono", "Dirección", "Estado", "Neto tienda", "Fecha"];
     const rows = orders.map(o => [
       o.id,
       `"${o.customerName || ''}"`,
       o.customerPhone || '',
       `"${o.formattedAddress || o.street || ''}"`,
       o.status || '',
-      (o.collectionAmount || 0) + (o.shippingCost || 0),
+      getOrderFinancials(o).netStoreAmount,
       o.createdAt || ''
     ]);
     const csv = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -144,7 +145,7 @@ export default function StoreReports() {
         <div className="bg-white border border-[#E7E7EC] rounded-2xl p-5 shadow-sm space-y-1">
           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ingresos por COD</span>
           <span className="block text-2xl font-extrabold text-emerald-600">RD${totalCodCollected.toLocaleString()}</span>
-          <span className="text-[10px] text-slate-400 font-semibold block">Monto total de entregados</span>
+          <span className="text-[10px] text-slate-400 font-semibold block">Neto de entregados después del envío</span>
         </div>
 
         <div className="bg-white border border-[#E7E7EC] rounded-2xl p-5 shadow-sm space-y-1">
