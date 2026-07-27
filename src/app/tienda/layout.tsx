@@ -111,12 +111,14 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
               <h5 className="font-bold text-xs text-slate-800">¿Necesitas ayuda?</h5>
               <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Nuestro equipo está disponible 24/7</p>
             </div>
-            <button 
-              onClick={() => alert("Contactando a soporte de EnkargoRD...")}
-              className="w-full bg-[#d3121a] hover:bg-[#b00f14] text-white font-extrabold text-[10px] py-2.5 px-4 rounded-xl transition-all shadow-sm"
+            <a 
+              href="https://wa.me/18296564603"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full bg-[#d3121a] hover:bg-[#b00f14] text-white font-extrabold text-[10px] py-2.5 px-4 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5"
             >
               Contactar soporte
-            </button>
+            </a>
           </div>
 
           <LogoutButton
