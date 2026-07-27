@@ -26,6 +26,7 @@ import {
   FileDown,
   Printer,
   Play,
+  Trash2,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import MapComponent from '@/components/MapComponent';
@@ -461,6 +462,20 @@ export default function AdminDashboard() {
     } catch (error) {
       console.error("Error assigning courier in Firestore:", error);
       alert("Error al asignar el repartidor en la base de datos.");
+    }
+  };
+
+  // Delete test order from Supabase
+  const handleDeleteOrder = async (orderId: string, trackingId: string) => {
+    const confirmed = window.confirm(`¿Estás seguro de eliminar el pedido de prueba #${trackingId}? Esta acción lo borrará permanentemente y no afectará la contabilidad.`);
+    if (!confirmed) return;
+
+    try {
+      await deleteSupabaseOrder(orderId);
+      triggerToast(`Pedido #${trackingId} eliminado correctamente.`);
+    } catch (error) {
+      console.error("Error deleting order from Supabase:", error);
+      alert("Error al eliminar el pedido de la base de datos.");
     }
   };
 
@@ -1205,10 +1220,10 @@ export default function AdminDashboard() {
                                   ))}
                               </select>
                             </td>
-                            <td className="py-4 px-6 text-right">
+                            <td className="py-4 px-6 text-right whitespace-nowrap">
                               <button
                                 onClick={() => user && void downloadOrdersPdf(user, [order.id], 'labels')}
-                                className="mr-2 border border-blue-200 bg-blue-50 text-blue-700 font-bold text-[11px] py-2 px-3 rounded-xl"
+                                className="mr-1.5 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] py-2 px-3 rounded-xl transition-all"
                                 title="Descargar label PDF"
                               >
                                 <Printer size={13} />
@@ -1218,9 +1233,16 @@ export default function AdminDashboard() {
                                   const selectEl = document.getElementById(`courier-assign-${order.id}`) as HTMLSelectElement;
                                   if (selectEl) handleAssignCourier(order.id, selectEl.value);
                                 }}
-                                className="bg-[#d3121a] hover:bg-[#b00f14] text-white font-bold text-[11px] py-2 px-4 rounded-xl transition-all"
+                                className="mr-1.5 bg-[#d3121a] hover:bg-[#b00f14] text-white font-bold text-[11px] py-2 px-3.5 rounded-xl transition-all"
                               >
                                 Despachar
+                              </button>
+                              <button
+                                onClick={() => handleDeleteOrder(order.id, order.trackingId)}
+                                className="border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[11px] py-2 px-2.5 rounded-xl transition-all"
+                                title="Borrar pedido de prueba"
+                              >
+                                <Trash2 size={13} />
                               </button>
                             </td>
                           </tr>
