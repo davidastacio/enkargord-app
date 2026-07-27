@@ -13,6 +13,9 @@ import {
   Package2,
   CheckCircle,
   Loader2,
+  User,
+  Mail,
+  Phone,
 } from 'lucide-react';
 import {
   DEFAULT_PRICING,
@@ -24,6 +27,8 @@ import {
   getOperationSettings,
   saveOperationSettings,
 } from '@/lib/supabase/operations';
+import { updateCurrentUserProfile } from '@/lib/supabase/profiles';
+import { useAuth } from '@/hooks/useAuth';
 import LogoutButton from '@/components/auth/LogoutButton';
 
 const PACKAGING_LABELS: Record<string, string> = {
@@ -37,14 +42,30 @@ const PACKAGING_LABELS: Record<string, string> = {
 };
 
 export default function OperacionesPage() {
+  const { user, profile, refreshProfile } = useAuth() as any;
   const [pricing, setPricing] = useState<PricingSettings>(DEFAULT_PRICING);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Admin personal profile state
+  const [adminName, setAdminName] = useState('');
+  const [adminPhone, setAdminPhone] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [savingAdminProfile, setSavingAdminProfile] = useState(false);
+
   const [newBeneficiary, setNewBeneficiary] = useState<Partial<SettlementBeneficiary>>({
     name: '', calculationType: 'fixed', fixedAmount: 50, percentage: 0, active: true,
   });
+
+  useEffect(() => {
+    if (profile) {
+      setAdminName(profile.name && profile.name !== 'Usuario EnkargoRD' ? profile.name : '');
+      setAdminPhone(profile.phone || '');
+      setAdminEmail(profile.email || user?.email || '');
+    }
+  }, [profile, user]);
 
   useEffect(() => {
     async function loadPricingFromSupabase() {
@@ -63,6 +84,32 @@ export default function OperacionesPage() {
   const triggerToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleSaveAdminProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminName.trim()) {
+      triggerToast('⚠️ El nombre del administrador es obligatorio.');
+      return;
+    }
+    setSavingAdminProfile(true);
+    try {
+      const token = await user?.getIdToken();
+      if (!token) throw new Error('UNAUTHENTICATED');
+      await updateCurrentUserProfile(token, {
+        name: adminName.trim(),
+        phone: adminPhone.trim(),
+        email: adminEmail.trim(),
+        role: 'Admin',
+      });
+      await refreshProfile();
+      triggerToast('👤 Perfil de administrador actualizado correctamente.');
+    } catch (err) {
+      console.error('Error updating admin profile:', err);
+      triggerToast('❌ Error al actualizar el perfil de administrador.');
+    } finally {
+      setSavingAdminProfile(false);
+    }
   };
 
   const handleSave = async () => {
@@ -181,6 +228,83 @@ export default function OperacionesPage() {
         </header>
 
         <div className="p-8 space-y-8 max-w-5xl">
+          {/* Section 0: Perfil del Administrador */}
+          <section className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                  <User size={18} className="text-[#d3121a]" /> Perfil del Administrador
+                </h3>
+                <p className="text-xs text-slate-400 font-semibold mt-0.5">
+                  Actualiza tu nombre de usuario, correo y teléfono de contacto en la plataforma
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveAdminProfile} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                    Nombre Completo
+                  </label>
+                  <div className="relative">
+                    <User size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={adminName}
+                      onChange={(e) => setAdminName(e.target.value)}
+                      placeholder="Ej. Administrador EnkargoRD"
+                      className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] focus:bg-white transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                    Correo Electrónico
+                  </label>
+                  <div className="relative">
+                    <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="email"
+                      value={adminEmail}
+                      onChange={(e) => setAdminEmail(e.target.value)}
+                      placeholder="admin@enkargord.com"
+                      className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] focus:bg-white transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                    Teléfono (WhatsApp)
+                  </label>
+                  <div className="relative">
+                    <Phone size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={adminPhone}
+                      onChange={(e) => setAdminPhone(e.target.value)}
+                      placeholder="809-123-4567"
+                      className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] focus:bg-white transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={savingAdminProfile}
+                  className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 disabled:opacity-50"
+                >
+                  {savingAdminProfile ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  {savingAdminProfile ? 'Guardando...' : 'Guardar Perfil Admin'}
+                </button>
+              </div>
+            </form>
+          </section>
+
           {/* Section 1: Precios Base de Envíos */}
           <section className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm space-y-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">

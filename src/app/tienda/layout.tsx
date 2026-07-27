@@ -24,11 +24,17 @@ import RouteGuard from '@/components/auth/RouteGuard';
 import AuthenticatedUserMenu from '@/components/auth/AuthenticatedUserMenu';
 import { useAuth } from '@/hooks/useAuth';
 import LogoutButton from '@/components/auth/LogoutButton';
+import CompleteProfileModal from '@/components/auth/CompleteProfileModal';
 
 export default function StoreLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { profile } = useAuth() as any;
+  const { profile, isImpersonating } = useAuth() as any;
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const isIncompleteProfile =
+    !isImpersonating &&
+    !!profile &&
+    (!profile.phone || profile.name === 'Usuario EnkargoRD' || !profile.name);
 
   const menuItems = [
     { name: 'Dashboard Tienda', href: '/tienda', icon: Package },
@@ -169,6 +175,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
 
         {/* Content Wrapper */}
         <main className="p-4 sm:p-6 lg:p-8 flex-grow min-w-0 overflow-x-hidden">
+          <CompleteProfileModal isOpen={isIncompleteProfile} />
           {children}
         </main>
 

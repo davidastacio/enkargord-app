@@ -79,3 +79,28 @@ export function subscribeAdminUserProfiles(onChange: () => void): () => void {
     void client.removeChannel(channel);
   };
 }
+
+export async function updateCurrentUserProfile(
+  idToken: string,
+  payload: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    role?: "Cliente" | "Tienda" | "Motorista" | "Admin";
+    storeId?: string | null;
+  }
+) {
+  const response = await fetch('/api/auth/supabase-profile', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'PROFILE_UPDATE_FAILED');
+  }
+  return await response.json();
+}
