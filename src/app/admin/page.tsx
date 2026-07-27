@@ -280,6 +280,10 @@ export default function AdminDashboard() {
       const ordersFromSupabase = supabaseOrders.map((rawOrder) => {
         const o = rawOrder as any;
         const storeNameReal = o.storeName || (o.storeId ? (storesMap[o.storeId] || 'Tienda Registrada') : 'Tienda Registrada');
+        const collectionAmt = Number(o.collectionAmount !== undefined ? o.collectionAmount : (o.financials?.totalCollected || o.financials?.productCost || 0));
+        const shippingFee = Number(o.shippingCost !== undefined ? o.shippingCost : (o.financials?.shippingCost || 0));
+        const netStoreAmount = Math.max(0, collectionAmt - shippingFee);
+
         return {
           id: o.id,
           trackingId: o.tracking || o.trackingId || o.id,
@@ -305,13 +309,13 @@ export default function AdminDashboard() {
           municipalityName: o.municipalityName || '',
           fulfillment: o.requiresFulfillment || false,
           financials: {
-            productCost: o.collectionAmount !== undefined ? o.collectionAmount : (o.financials?.productCost || 0),
-            shippingCost: o.shippingCost !== undefined ? o.shippingCost : (o.financials?.shippingCost || 0),
+            productCost: netStoreAmount,
+            shippingCost: shippingFee,
             fulfillmentCost: 0,
-            totalCollected: (o.collectionAmount || 0) + (o.shippingCost || 0),
-            storeOwnerAmount: o.collectionAmount || 0,
+            totalCollected: collectionAmt,
+            storeOwnerAmount: netStoreAmount,
             creatorCommission: 50,
-            transportadoraCommission: (o.shippingCost || 0) - 50
+            transportadoraCommission: Math.max(0, shippingFee - 50)
           }
         };
       });

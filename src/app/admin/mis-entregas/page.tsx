@@ -260,9 +260,7 @@ export default function MisEntregasPage() {
         updatePayload.inTransitAt = nowStr;
       } else if (newStatus === 'delivered') {
         updatePayload.deliveredAt = nowStr;
-        updatePayload.amountCollected =
-          Number(current.collectionAmount || current.financials?.orderCollectionAmount || 0) +
-          Number(current.shippingCost || current.financials?.shippingCost || 0);
+        updatePayload.amountCollected = Number(current.collectionAmount || current.financials?.totalCollected || 0);
         updatePayload.collectedAmount = updatePayload.amountCollected;
       }
 
@@ -511,10 +509,7 @@ export default function MisEntregasPage() {
                       <span className="text-xs text-red-200">Tienda:</span>
                       <span className="text-sm font-bold">{current.storeName || '—'}</span>
                       <span className="ml-auto text-xl font-extrabold">
-                        RD${(
-                          Number(current.collectionAmount || current.financials?.orderCollectionAmount || 0) +
-                          Number(current.shippingCost || current.financials?.shippingCost || 0)
-                        ).toLocaleString()}
+                        RD${Number(current.collectionAmount || current.financials?.totalCollected || 0).toLocaleString()}
                       </span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
