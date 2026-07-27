@@ -31,14 +31,18 @@ export async function GET(request: Request) {
     // Query all collaborators registered for this store_id
     const { data: team, error } = await supabase
       .from("user_profiles")
-      .select("firebase_uid, name, email, phone, role, status, created_at")
+      .select("firebase_uid, name, email, phone, role, metadata, status, created_at")
       .eq("store_id", storeId)
-      .eq("role", "Colaborador")
       .order("created_at", { ascending: false });
 
     if (error) throw error;
 
-    return NextResponse.json({ team: team || [] });
+    const collaborators = (team || []).filter(u => {
+      const meta = (u.metadata as any) ?? {};
+      return u.role === "Colaborador" || meta.isCollaborator === true || meta.subRole === "Colaborador";
+    });
+
+    return NextResponse.json({ team: collaborators });
   } catch (error: any) {
     console.error("Error listing store team:", error);
     return NextResponse.json({ error: "INTERNAL_SERVER_ERROR" }, { status: 500 });

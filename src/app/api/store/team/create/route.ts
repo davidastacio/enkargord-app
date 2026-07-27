@@ -72,7 +72,7 @@ export async function POST(request: Request) {
 
     const now = new Date().toISOString();
 
-    // 5. Create user_profile record in Supabase
+    // 5. Create user_profile record in Supabase (Use "Tienda" to satisfy DB check constraint)
     const { error: insertProfileErr } = await supabase
       .from("user_profiles")
       .insert({
@@ -82,9 +82,11 @@ export async function POST(request: Request) {
         name: String(name).trim(),
         email: String(email).trim().toLowerCase(),
         phone: phone ? String(phone).trim() : null,
-        role: "Colaborador",
+        role: "Tienda",
         status: "active",
         metadata: {
+          isCollaborator: true,
+          subRole: "Colaborador",
           createdByUid: decoded.uid,
           createdForStore: storeId,
         },
@@ -96,15 +98,18 @@ export async function POST(request: Request) {
       console.error("Supabase profile insert error:", insertProfileErr);
       // Clean up Firebase user if profile insert fails
       await adminAuth.deleteUser(newFirebaseUser.uid).catch(console.error);
-      return NextResponse.json({ error: "PROFILE_INSERT_FAILED" }, { status: 500 });
+      return NextResponse.json({
+        error: "PROFILE_INSERT_FAILED",
+        details: insertProfileErr.message || insertProfileErr
+      }, { status: 500 });
     }
 
-    // 6. Create organization_members entry
+    // 6. Create organization_members entry (Use "store" to satisfy DB check constraint)
     if (callerProfile.organization_id) {
       const { error: orgErr } = await supabase.from("organization_members").insert({
         organization_id: callerProfile.organization_id,
         firebase_uid: newFirebaseUser.uid,
-        role: "collaborator",
+        role: "store",
         status: "active",
         updated_at: now,
       });

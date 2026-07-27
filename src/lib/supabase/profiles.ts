@@ -42,13 +42,14 @@ const ROLE_MAP: Record<ProfileRow["role"], AdminUserProfile["role"]> = {
 function mapProfile(row: ProfileRow): AdminUserProfile {
   const metadata = row.metadata ?? {};
   const name = row.name ?? "";
+  const isCollab = metadata.isCollaborator === true || metadata.subRole === "Colaborador" || row.role === "Colaborador";
   return {
     id: row.firebase_uid,
     name,
     displayName: name,
     email: row.email ?? "",
     phone: row.phone ?? "",
-    role: ROLE_MAP[row.role],
+    role: isCollab ? "collaborator" : (ROLE_MAP[row.role] || "store"),
     status: row.status,
     createdAt: row.created_at,
     lastLoginAt: typeof metadata.lastLoginAt === "string" ? metadata.lastLoginAt : "",

@@ -49,13 +49,18 @@ export async function GET(request: Request) {
     );
     const { data, error } = await getSupabaseAdminClient()
       .from("user_profiles")
-      .select("firebase_uid, store_id, courier_id, name, email, phone, role, created_at")
+      .select("firebase_uid, store_id, courier_id, name, email, phone, role, metadata, created_at")
       .eq("firebase_uid", decoded.uid)
       .maybeSingle();
     if (error) throw error;
     if (!data) {
       return NextResponse.json({ success: true, profile: null });
     }
+
+    const metadata = (data.metadata as any) ?? {};
+    const isCollaborator = metadata.isCollaborator === true || metadata.subRole === "Colaborador" || decoded.role === "Colaborador" || decoded.appRole === "Colaborador";
+    const effectiveRole = isCollaborator ? "Colaborador" : data.role;
+
     return NextResponse.json({
       success: true,
       profile: {
@@ -65,7 +70,7 @@ export async function GET(request: Request) {
         name: data.name,
         email: data.email,
         phone: data.phone,
-        role: data.role,
+        role: effectiveRole,
         createdAt: data.created_at,
       },
     });
