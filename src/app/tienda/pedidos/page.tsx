@@ -23,6 +23,8 @@ interface OrderRow {
   packageType: string;
   status: 'in_transit' | 'delivered' | 'pending';
   amount: number;
+  shippingCost?: number;
+  netAmount?: number;
   courierName: string;
   date: string;
   provinceName: string;
@@ -58,7 +60,9 @@ export default function StoreOrdersList() {
             address: o.formattedAddress || o.street || 'Sin dirección',
             packageType: String(o.packageType || 'Paquete'),
             status: o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
-            amount: Number(o.collectionAmount || 0) + Number(o.shippingCost || 0),
+            amount: Number(o.collectionAmount || 0),
+            shippingCost: Number(o.shippingCost || 0),
+            netAmount: Math.max(0, Number(o.collectionAmount || 0) - Number(o.shippingCost || 0)),
             courierName: String(o.courierName || 'No asignado'),
             date: o.createdAt ? o.createdAt.split('T')[0] : 'Hoy',
             provinceName: String(o.provinceName || 'Sin provincia'),
@@ -306,7 +310,16 @@ export default function StoreOrdersList() {
                     <td className="py-4 px-6 text-slate-500 max-w-[200px] truncate">{o.address}</td>
                     <td className="py-4 px-6 font-semibold text-[#d3121a]">{o.packageType}</td>
                     <td className="py-4 px-6 font-extrabold text-slate-900">
-                      {profile?.role === 'Colaborador' ? '***' : `RD$${o.amount.toLocaleString()}`}
+                      {profile?.role === 'Colaborador' ? (
+                        '***'
+                      ) : (
+                        <div>
+                          <span className="block text-slate-900">RD${o.amount.toLocaleString()}</span>
+                          <span className="block text-[10px] text-emerald-600 font-bold">
+                            Neto: RD${(o.netAmount ?? Math.max(0, o.amount - (o.shippingCost || 0))).toLocaleString()}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     
                     <td className="py-4 px-6">

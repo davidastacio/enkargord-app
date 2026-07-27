@@ -24,6 +24,8 @@ interface OrderRow {
   address: string;
   status: 'in_transit' | 'delivered' | 'pending';
   amount: number;
+  shippingCost?: number;
+  netAmount?: number;
   courierName: string;
   time: string;
 }
@@ -50,6 +52,10 @@ export default function StoreDashboard() {
           const timeString = o.createdAt 
             ? new Date(o.createdAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })
             : 'N/A';
+          const collectionAmt = Number(o.collectionAmount || 0);
+          const shippingFee = Number(o.shippingCost || 0);
+          const netAmt = Math.max(0, collectionAmt - shippingFee);
+
           return {
             id: o.id,
             trackingId: o.tracking || o.id,
@@ -57,7 +63,9 @@ export default function StoreDashboard() {
             customerPhone: o.customerPhone || '',
             address: o.formattedAddress || o.street || 'Sin dirección',
             status: (o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending') as OrderRow['status'],
-            amount: (o.collectionAmount || 0) + (o.shippingCost || 0),
+            amount: collectionAmt,
+            shippingCost: shippingFee,
+            netAmount: netAmt,
             courierName: o.courierName || 'No asignado',
             time: timeString
           };
@@ -79,7 +87,7 @@ export default function StoreDashboard() {
   const inTransitCount = orders.filter(o => o.status === 'in_transit').length;
   const deliveredCount = orders.filter(o => o.status === 'delivered').length;
   const pendingCount = orders.filter(o => o.status === 'pending').length;
-  const totalSales = orders.filter(o => o.status === 'delivered').reduce((sum, o) => sum + o.amount, 0);
+  const totalSales = orders.filter(o => o.status === 'delivered').reduce((sum, o) => sum + (o.netAmount || 0), 0);
 
   // Dynamic Chart data
   const chartData = [
@@ -223,7 +231,16 @@ export default function StoreDashboard() {
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-right font-bold text-slate-900">
-                          {profile?.role === 'Colaborador' ? '***' : `RD$${order.amount.toLocaleString()}`}
+                          {profile?.role === 'Colaborador' ? (
+                            '***'
+                          ) : (
+                            <div>
+                              <span className="block text-slate-900">RD${order.amount.toLocaleString()}</span>
+                              <span className="block text-[10px] text-emerald-600 font-bold">
+                                Neto: RD${(order.netAmount || 0).toLocaleString()}
+                              </span>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
