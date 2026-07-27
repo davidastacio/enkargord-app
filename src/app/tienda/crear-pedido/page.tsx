@@ -1100,12 +1100,15 @@ export default function CreateOrder() {
               </label>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Valor del producto (RD$)</label>
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                  Monto Total a cobrar al cliente (Envío Incluido) (RD$)
+                </label>
                 <div className="relative">
                   <DollarSign size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input 
                     type="number" 
                     disabled={!requiresCod}
+                    placeholder="Ej. 1850"
                     value={collectAmount}
                     onChange={(e) => setCollectAmount(e.target.value)}
                     className="w-full pl-11 pr-4 py-2.5 bg-white disabled:bg-slate-50 disabled:text-slate-400 border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
@@ -1114,6 +1117,25 @@ export default function CreateOrder() {
               </div>
 
             </div>
+
+            {requiresCod && (parseFloat(collectAmount) || 0) > 0 && (
+              <div className="bg-slate-50 border border-[#E7E7EC] rounded-2xl p-4 space-y-2 text-xs">
+                <div className="flex items-center justify-between text-slate-600 font-medium">
+                  <span>💵 Total a cobrar al cliente en destino (COD):</span>
+                  <span className="font-extrabold text-slate-900">RD${(parseFloat(collectAmount) || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-600 font-medium">
+                  <span>🛵 Tarifa de envío EnkargoRD ({shippingType === 'express' ? '⚡ Express' : 'Estándar'}):</span>
+                  <span className="font-extrabold text-[#d3121a]">- RD${activeShippingFee.toLocaleString()}</span>
+                </div>
+                <div className="pt-2 border-t border-slate-200 flex items-center justify-between font-extrabold">
+                  <span className="text-emerald-700">💰 Neto a liquidar a tu tienda (Ganancia del producto):</span>
+                  <span className="text-sm font-black text-emerald-600">
+                    RD${Math.max(0, (parseFloat(collectAmount) || 0) - activeShippingFee).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1">

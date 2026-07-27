@@ -117,7 +117,9 @@ export default function StoreOrderDetailPage() {
   }
 
   const trackingCode = order.tracking || order.trackingId || order.id;
-  const totalAmount = (order.collectionAmount || 0) + (order.shippingCost || 0);
+  const collectionAmt = order.collectionAmount || 0;
+  const shippingFee = order.shippingCost || 0;
+  const netStorePayout = Math.max(0, collectionAmt - shippingFee);
 
   return (
     <div className="space-y-8 animate-fade-in max-w-5xl">
@@ -244,21 +246,21 @@ export default function StoreOrderDetailPage() {
 
             <div className="bg-slate-50 border border-[#E7E7EC] rounded-xl p-4 grid grid-cols-3 gap-4 text-xs">
               <div>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase">Monto a Recaudar (COD)</span>
+                <span className="block text-[10px] font-bold text-slate-400 uppercase">Total Recaudo Cliente (COD)</span>
                 <span className="text-base font-extrabold text-slate-900">
-                  {profile?.role === 'Colaborador' ? '***' : `RD$${(order.collectionAmount || 0).toLocaleString()}`}
+                  {profile?.role === 'Colaborador' ? '***' : `RD$${collectionAmt.toLocaleString()}`}
                 </span>
               </div>
               <div>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase">Costo de Envío</span>
+                <span className="block text-[10px] font-bold text-slate-400 uppercase">Tarifa de Envío</span>
                 <span className="text-base font-extrabold text-[#d3121a]">
-                  {profile?.role === 'Colaborador' ? '***' : `RD$${(order.shippingCost || 0).toLocaleString()}`}
+                  {profile?.role === 'Colaborador' ? '***' : `- RD$${shippingFee.toLocaleString()}`}
                 </span>
               </div>
               <div>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase">Monto Total</span>
+                <span className="block text-[10px] font-bold text-slate-400 uppercase">Neto a Liquidar a Tienda</span>
                 <span className="text-base font-extrabold text-emerald-600">
-                  {profile?.role === 'Colaborador' ? '***' : `RD$${totalAmount.toLocaleString()}`}
+                  {profile?.role === 'Colaborador' ? '***' : `RD$${netStorePayout.toLocaleString()}`}
                 </span>
               </div>
             </div>

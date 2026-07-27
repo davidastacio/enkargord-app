@@ -52,7 +52,7 @@ export async function GET(request: Request) {
         phone: store.phone || "",
         orderCount: pendingOrders.length,
         productBalance: pendingOrders.reduce(
-          (sum, order) => sum + Number(order.collection_amount || 0),
+          (sum, order) => sum + Math.max(0, Number(order.collection_amount || 0) - Number(order.shipping_cost || 0)),
           0,
         ),
         shippingTotal: pendingOrders.reduce(
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     if (ordersError) throw ordersError;
     if (!orders?.length) return NextResponse.json({ error: "NO_PENDING_BALANCE" }, { status: 409 });
 
-    const productAmount = orders.reduce(
+    const totalCollected = orders.reduce(
       (sum, order) => sum + Number(order.collection_amount || 0),
       0,
     );
@@ -113,6 +113,8 @@ export async function POST(request: Request) {
       (sum, order) => sum + Number(order.shipping_cost || 0),
       0,
     );
+    const netAmountToStore = Math.max(0, totalCollected - shippingAmount);
+
     const now = new Date().toISOString();
     const settlementId = `SET-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
     const orderIds = orders.map((order) => order.id);
@@ -122,10 +124,10 @@ export async function POST(request: Request) {
       store_id: storeId,
       status: "paid",
       order_ids: orderIds,
-      gross_amount: productAmount + shippingAmount,
+      gross_amount: totalCollected,
       shipping_amount: shippingAmount,
       commission_amount: shippingAmount,
-      net_amount: productAmount,
+      net_amount: netAmountToStore,
       created_by_uid: context.decoded.uid,
       approved_by_uid: context.decoded.uid,
       metadata: {
@@ -152,7 +154,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       settlementId,
-      paidAmount: productAmount,
+      paidAmount: netAmountToStore,
       orderCount: orderIds.length,
     });
   } catch (error) {

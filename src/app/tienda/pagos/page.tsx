@@ -40,16 +40,19 @@ export default function StorePayments() {
   const deliveredOrders = orders.filter(o => o.status === 'delivered');
   const pendingSettlementOrders = orders.filter(o => o.status === 'delivered' && o.settlementStatus !== 'settled');
 
-  const pendingStoreAmount = pendingSettlementOrders.reduce((sum, o) => sum + (o.collectionAmount || 0), 0);
+  const pendingStoreAmount = pendingSettlementOrders.reduce(
+    (sum, o) => sum + Math.max(0, (o.collectionAmount || 0) - (o.shippingCost || 0)),
+    0
+  );
   const totalShippingFees = orders.reduce((sum, o) => sum + (o.shippingCost || 0), 0);
-  const totalCodCollected = deliveredOrders.reduce((sum, o) => sum + (o.collectionAmount || 0) + (o.shippingCost || 0), 0);
+  const totalCodCollected = deliveredOrders.reduce((sum, o) => sum + (o.collectionAmount || 0), 0);
 
   // Generate dynamic transactions list from orders
   const payments: PaymentRow[] = deliveredOrders.map(o => ({
     date: o.deliveredAt ? o.deliveredAt.split('T')[0] : (o.createdAt ? o.createdAt.split('T')[0] : 'Hoy'),
     reference: `LIQ-${o.tracking || o.id.slice(0, 6)}`,
     type: 'Liquidación',
-    amount: o.collectionAmount || 0,
+    amount: Math.max(0, (o.collectionAmount || 0) - (o.shippingCost || 0)),
     status: o.settlementStatus === 'settled' ? 'Completado' : 'Pendiente'
   }));
 
