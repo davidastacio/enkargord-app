@@ -96,9 +96,9 @@ export default function ResetPasswordPage() {
             ) : (
               <>
                 <div className="text-center space-y-2">
-                  <div className="relative w-28 h-10 mx-auto">
+                  <div className="relative mx-auto h-10 w-48">
                     <Image 
-                      src="/logo.png" 
+                      src="/logo-horizontal.png" 
                       alt="EnkargoRD Logo" 
                       fill 
                       className="object-contain"

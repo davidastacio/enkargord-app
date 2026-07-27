@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   PhoneOff,
   Phone,
@@ -13,25 +13,17 @@ import {
   AlertTriangle,
   Plus,
 } from 'lucide-react';
-import { DEFAULT_ORDERS, type CourierOrder, type NoAnswerAttempt, buildWhatsAppUrl, DEFAULT_WHATSAPP_TEMPLATES } from '@/data/courier';
+import { type CourierOrder, type NoAnswerAttempt, buildWhatsAppUrl, DEFAULT_WHATSAPP_TEMPLATES } from '@/data/courier';
+import { useCourierOrders } from '@/hooks/useCourierOrders';
+import { addSupabaseOrderEvent, updateSupabaseOrder } from '@/lib/supabase/orders';
 
 export default function NoContactadosPage() {
-  const [orders, setOrders] = useState<CourierOrder[]>([]);
+  const { orders, setOrders, courierId, profile } = useCourierOrders();
   const [selectedOrder, setSelectedOrder] = useState<CourierOrder | null>(null);
   const [notes, setNotes] = useState('');
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<'list' | 'detail'>('list');
-
-  useEffect(() => {
-    const stored = localStorage.getItem('enkargord_courier_orders');
-    setOrders(stored ? JSON.parse(stored) : DEFAULT_ORDERS);
-  }, []);
-
-  const saveOrders = (updated: CourierOrder[]) => {
-    setOrders(updated);
-    localStorage.setItem('enkargord_courier_orders', JSON.stringify(updated));
-  };
 
   const triggerToast = (msg: string) => {
     setToast(msg);
@@ -39,47 +31,57 @@ export default function NoContactadosPage() {
   };
 
   const noAnswerOrders = orders.filter(
-    (o) => o.courierId === 'COU-001' && (o.status === 'no_answer' || o.status === 'rescheduled')
+    (o) => o.courierId === courierId && (o.status === 'no_answer' || o.status === 'rescheduled')
   );
 
-  const addAttempt = (orderId: string, channel: 'call' | 'whatsapp' | 'both') => {
+  const addAttempt = async (orderId: string, channel: 'call' | 'whatsapp' | 'both') => {
+    const target = orders.find((order) => order.id === orderId);
+    if (!target) return;
+    const prevAttempts = target.noAnswerRecord?.attempts ?? [];
+    const newAttempt: NoAnswerAttempt = {
+      attemptNumber: prevAttempts.length + 1,
+      timestamp: new Date().toISOString(),
+      channel,
+      notes: notes || '',
+    };
+    const noAnswerRecord = { orderId, attempts: [...prevAttempts, newAttempt] };
     const updated = orders.map((o) => {
       if (o.id !== orderId) return o;
-      const prevAttempts = o.noAnswerRecord?.attempts ?? [];
-      const newAttempt: NoAnswerAttempt = {
-        attemptNumber: prevAttempts.length + 1,
-        timestamp: new Date().toISOString(),
-        channel,
-        notes,
-      };
-      return {
-        ...o,
-        noAnswerRecord: {
-          orderId,
-          attempts: [...prevAttempts, newAttempt],
-        },
-      };
+      return { ...o, noAnswerRecord };
     });
-    saveOrders(updated);
+    setOrders(updated);
+    await updateSupabaseOrder(orderId, { noAnswerRecord });
+    await addSupabaseOrderEvent(orderId, {
+      type: 'contact_attempt',
+      actorUid: profile?.uid || '',
+      actorRole: 'courier',
+      courierId,
+      note: notes || `Intento por ${channel}`,
+      createdAt: newAttempt.timestamp,
+    });
     setNotes('');
     triggerToast('Intento registrado correctamente.');
   };
 
-  const reschedule = (orderId: string) => {
+  const reschedule = async (orderId: string) => {
     if (!rescheduleDate) return;
     const updated = orders.map((o) =>
       o.id === orderId
         ? { ...o, status: 'rescheduled' as const, scheduledAt: new Date(rescheduleDate).toISOString() }
         : o
     );
-    saveOrders(updated);
+    setOrders(updated);
+    await updateSupabaseOrder(orderId, {
+      status: 'rescheduled',
+      scheduledAt: new Date(rescheduleDate).toISOString(),
+    });
     setRescheduleDate('');
     setSelectedOrder(null);
     setActivePanel('list');
     triggerToast('Pedido reprogramado correctamente.');
   };
 
-  const returnToStore = (orderId: string) => {
+  const returnToStore = async (orderId: string) => {
     const updated = orders.map((o) =>
       o.id === orderId
         ? {
@@ -92,13 +94,17 @@ export default function NoContactadosPage() {
           }
         : o
     );
-    saveOrders(updated);
+    setOrders(updated);
+    await updateSupabaseOrder(orderId, {
+      status: 'returned',
+      noAnswerRecord: updated.find((order) => order.id === orderId)?.noAnswerRecord || null,
+    });
     setSelectedOrder(null);
     setActivePanel('list');
     triggerToast('Pedido marcado como devuelto a tienda.');
   };
 
-  const markIncorrectAddress = (orderId: string) => {
+  const markIncorrectAddress = async (orderId: string) => {
     const updated = orders.map((o) =>
       o.id === orderId
         ? {
@@ -111,7 +117,11 @@ export default function NoContactadosPage() {
           }
         : o
     );
-    saveOrders(updated);
+    setOrders(updated);
+    await updateSupabaseOrder(orderId, {
+      status: 'failed_delivery',
+      noAnswerRecord: updated.find((order) => order.id === orderId)?.noAnswerRecord || null,
+    });
     triggerToast('Dirección marcada como incorrecta.');
   };
 

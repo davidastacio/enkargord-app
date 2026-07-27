@@ -6,8 +6,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Mail, HelpCircle } from 'lucide-react';
 
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
 import type { UserProfile } from '@/providers/AuthProvider';
 
@@ -18,9 +16,17 @@ import SocialLoginButton from '@/components/auth/SocialLoginButton';
 import LoadingButton from '@/components/auth/LoadingButton';
 import FormError from '@/components/auth/FormError';
 
+function destinationForProfile(userProfile: UserProfile): string {
+  const normalizedRole = String(userProfile.role || '').trim().toLowerCase();
+  if (normalizedRole === 'admin' || normalizedRole === 'administrador') return '/admin';
+  if (normalizedRole === 'tienda' || normalizedRole === 'store' || userProfile.storeId) return '/tienda';
+  if (normalizedRole === 'motorista' || normalizedRole === 'courier' || userProfile.courierId) return '/motorista';
+  return '/tienda';
+}
+
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -71,18 +77,13 @@ export default function LoginPage() {
       // If it looks like a phone number, resolve it to email
       const isPhonePattern = /^[0-9\-()+ ]+$/.test(emailToAuth) && emailToAuth.replace(/\D/g, '').length >= 7;
       if (isPhonePattern) {
-        const cleanedPhone = emailToAuth.replace(/\D/g, '');
-        const q = query(collection(db, 'users'), where('phone', '==', cleanedPhone));
-        const querySnapshot = await Promise.race([getDocs(q), timeoutPromise]) as any;
-        if (!querySnapshot.empty) {
-          emailToAuth = querySnapshot.docs[0].data().email;
-        } else {
-          const q2 = query(collection(db, 'users'), where('phone', '==', emailToAuth));
-          const querySnapshot2 = await Promise.race([getDocs(q2), timeoutPromise]) as any;
-          if (!querySnapshot2.empty) {
-            emailToAuth = querySnapshot2.docs[0].data().email;
-          }
-        }
+        const response = await fetch('/api/auth/resolve-identifier', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: emailToAuth }),
+        });
+        const result = await response.json();
+        if (result.email) emailToAuth = result.email;
       }
 
       console.log(`[Diagnostic] flowId=${flowId} etapa=firebase-signin-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
@@ -96,16 +97,8 @@ export default function LoginPage() {
 
       console.log(`[Diagnostic] flowId=${flowId} etapa=redirect-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
       
-      // Redirect depending on user role
-      if (userProfile.role === 'Admin') {
-        router.push('/admin');
-      } else if (userProfile.role === 'Tienda') {
-        router.push('/tienda');
-      } else if (userProfile.role === 'Motorista') {
-        router.push('/motorista');
-      } else {
-        router.push('/');
-      }
+      router.push(destinationForProfile(userProfile));
+      router.refresh();
       
       console.log(`[Diagnostic] flowId=${flowId} etapa=redirect-completed elapsed=${(performance.now() - t0).toFixed(0)}ms`);
     } catch (error: any) {
@@ -115,7 +108,12 @@ export default function LoginPage() {
       let errMsg = 'Las credenciales ingresadas son incorrectas o el usuario no existe.';
       if (error.message === 'TIMEOUT_EXCEEDED') {
         errMsg = 'La operación ha tardado más de 10 segundos. Se interrumpió por timeout.';
-      } else if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+      } else if (
+        error.code === 'auth/wrong-password' ||
+        error.code === 'auth/user-not-found' ||
+        error.code === 'auth/invalid-credential' ||
+        error.code === 'auth/invalid-login-credentials'
+      ) {
         errMsg = 'El correo o la contraseña son incorrectos.';
       } else if (error.code === 'auth/invalid-email') {
         errMsg = 'El formato del correo electrónico ingresado no es válido.';
@@ -125,6 +123,23 @@ export default function LoginPage() {
       setErrorMsg(errMsg);
     } finally {
       console.log(`[Diagnostic] flowId=${flowId} etapa=login-finally elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      const userProfile = await loginWithGoogle();
+      router.push(destinationForProfile(userProfile));
+      router.refresh();
+    } catch (error: any) {
+      if (error?.code !== 'auth/popup-closed-by-user') {
+        setErrorMsg(error?.message || 'No se pudo iniciar sesión con Google.');
+      }
+    } finally {
       setIsLoading(false);
     }
   };
@@ -150,9 +165,9 @@ export default function LoginPage() {
             
             {/* Header info */}
             <div className="text-center space-y-2">
-              <div className="relative w-28 h-10 mx-auto">
+              <div className="relative mx-auto h-10 w-48">
                 <Image 
-                  src="/logo.png" 
+                  src="/logo-horizontal.png" 
                   alt="EnkargoRD Logo" 
                   fill 
                   className="object-contain"
@@ -245,7 +260,7 @@ export default function LoginPage() {
             {/* Social Authentication */}
             <SocialLoginButton 
               text="Continuar con Google" 
-              onClick={() => alert("Simulación: Inicio de sesión social con Google...")}
+              onClick={handleGoogleLogin}
             />
 
             {/* Register redirection */}

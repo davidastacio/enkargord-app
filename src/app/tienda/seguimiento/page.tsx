@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import { MapPin, Clock, Truck, ShieldCheck, User, Phone, Package, Navigation, Loader2 } from 'lucide-react';
 import MapComponent from '@/components/MapComponent';
-import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
 import WhatsAppContactButton from '@/components/WhatsAppContactButton';
+import { subscribeSupabaseOrders } from '@/lib/supabase/orders';
+import { subscribeSupabaseCourierLocation } from '@/lib/supabase/tracking';
 
 export default function StoreTracking() {
   const { profile } = useAuth() as any;
@@ -20,14 +20,11 @@ export default function StoreTracking() {
     if (!profile?.uid) return;
     const storeId = profile.storeId || profile.uid;
 
-    const q = query(
-      collection(db, 'orders'),
-      where('storeId', '==', storeId),
-      where('status', 'in', ['assigned', 'picked_up', 'in_transit', 'on_route', 'customer_unreachable', 'next_delivery'])
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    const unsubscribe = subscribeSupabaseOrders({ storeId }, (storeOrders) => {
+      const list = storeOrders.filter((order) =>
+        ['assigned', 'picked_up', 'in_transit', 'on_route', 'customer_unreachable', 'next_delivery']
+          .includes(String(order.status)),
+      );
       setOrders(list);
 
       if (list.length > 0 && !selectedOrderId) {
@@ -46,18 +43,14 @@ export default function StoreTracking() {
 
   // 2. Fetch live courier location if courierUid/courierId is present
   useEffect(() => {
-    const courierUid = activeOrder?.courierUid || activeOrder?.courierId;
-    if (!courierUid) {
+    const courierId = activeOrder?.courierId;
+    if (!courierId) {
       setCourierLocation(null);
       return;
     }
 
-    const unsubscribe = onSnapshot(doc(db, 'courier_locations', courierUid), (docSnap) => {
-      if (docSnap.exists()) {
-        setCourierLocation(docSnap.data());
-      } else {
-        setCourierLocation(null);
-      }
+    const unsubscribe = subscribeSupabaseCourierLocation(courierId, (location) => {
+      setCourierLocation(location);
     }, (err) => {
       console.error("Error fetching courier live location:", err);
       setCourierLocation(null);

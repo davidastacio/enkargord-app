@@ -13,9 +13,8 @@ import {
   Area
 } from 'recharts';
 import { Download, Loader2, Package, TrendingUp } from 'lucide-react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { subscribeSupabaseOrders } from '@/lib/supabase/orders';
 
 export default function StoreReports() {
   const { profile } = useAuth() as any;
@@ -26,10 +25,7 @@ export default function StoreReports() {
     if (profile?.uid) {
       setLoading(true);
       const storeId = profile.storeId || profile.uid;
-      const q = query(collection(db, 'orders'), where('storeId', '==', storeId));
-
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const unsubscribe = subscribeSupabaseOrders({ storeId }, (list) => {
         setOrders(list);
         setLoading(false);
       }, (err) => {

@@ -588,7 +588,29 @@ export const SECTORS: Sector[] = [
   { id: 'SEC_SDE_03', municipalityId: 'MUN_SD_01', name: 'Ensanche Ozama' },
   
   // Santo Domingo Norte
-  { id: 'SEC_SDN_01', municipalityId: 'MUN_SD_06', name: 'Villa Mella' }
+  { id: 'SEC_SDN_01', municipalityId: 'MUN_SD_06', name: 'Villa Mella' },
+
+  // Higüey
+  { id: 'SEC_LA_HGY_01', municipalityId: 'MUN_LA_01', name: 'Higüey Centro' },
+  { id: 'SEC_LA_HGY_02', municipalityId: 'MUN_LA_01', name: 'San Pedro' },
+  { id: 'SEC_LA_HGY_03', municipalityId: 'MUN_LA_01', name: 'Savica' },
+  { id: 'SEC_LA_HGY_04', municipalityId: 'MUN_LA_01', name: 'Villa Cerro' },
+
+  // Verón-Punta Cana
+  { id: 'SEC_LA_VPC_01', municipalityId: 'MUN_LA_01', municipalDistrictId: 'DM_LA_03', name: 'Bávaro' },
+  { id: 'SEC_LA_VPC_02', municipalityId: 'MUN_LA_01', municipalDistrictId: 'DM_LA_03', name: 'Punta Cana' },
+  { id: 'SEC_LA_VPC_03', municipalityId: 'MUN_LA_01', municipalDistrictId: 'DM_LA_03', name: 'Friusa' },
+  { id: 'SEC_LA_VPC_04', municipalityId: 'MUN_LA_01', municipalDistrictId: 'DM_LA_03', name: 'Verón' },
+  { id: 'SEC_LA_VPC_05', municipalityId: 'MUN_LA_01', municipalDistrictId: 'DM_LA_03', name: 'El Cortecito' },
+  { id: 'SEC_LA_VPC_06', municipalityId: 'MUN_LA_01', municipalDistrictId: 'DM_LA_03', name: 'Los Corales' },
+  { id: 'SEC_LA_VPC_07', municipalityId: 'MUN_LA_01', municipalDistrictId: 'DM_LA_03', name: 'Cabeza de Toro' },
+  { id: 'SEC_LA_VPC_08', municipalityId: 'MUN_LA_01', municipalDistrictId: 'DM_LA_03', name: 'Arena Gorda' },
+  { id: 'SEC_LA_VPC_09', municipalityId: 'MUN_LA_01', municipalDistrictId: 'DM_LA_03', name: 'Uvero Alto' },
+  { id: 'SEC_LA_VPC_10', municipalityId: 'MUN_LA_01', municipalDistrictId: 'DM_LA_03', name: 'Macao' },
+  { id: 'SEC_LA_VPC_11', municipalityId: 'MUN_LA_01', municipalDistrictId: 'DM_LA_03', name: 'El Ejecutivo' },
+  { id: 'SEC_LA_VPC_12', municipalityId: 'MUN_LA_01', municipalDistrictId: 'DM_LA_03', name: 'Villa Playwood' },
+  { id: 'SEC_LA_VPC_13', municipalityId: 'MUN_LA_01', municipalDistrictId: 'DM_LA_03', name: 'Ciudad Las Canas' },
+  { id: 'SEC_LA_VPC_14', municipalityId: 'MUN_LA_01', municipalDistrictId: 'DM_LA_03', name: 'Cap Cana' }
 ];
 
 // Alias normalizer
@@ -603,7 +625,12 @@ const ALIAS_MAP: Record<string, string> = {
   'sto dgo norte': 'Santo Domingo Norte',
   'sdn': 'Santo Domingo Norte',
   'distrito nacional': 'Distrito Nacional',
-  'la romana': 'La Romana'
+  'la romana': 'La Romana',
+  // These localities belong to the municipality of Higüey.
+  'punta cana': 'Higüey',
+  'bavaro': 'Higüey',
+  'friusa': 'Higüey',
+  'veron': 'Higüey'
 };
 
 export function normalizeText(text: string): string {

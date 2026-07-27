@@ -1,0 +1,83 @@
+import { NextResponse } from "next/server";
+import { getAdminAuth } from "@/lib/firebase/admin";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { logisticsRegion, routeLabel } from "@/lib/logistics/regions";
+
+export async function POST(request: Request) {
+  try {
+    const authorization = request.headers.get("authorization") ?? "";
+    if (!authorization.startsWith("Bearer ")) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const decoded = await getAdminAuth().verifyIdToken(authorization.slice(7));
+    const supabase = getSupabaseAdminClient();
+    const { data: profile, error: profileError } = await supabase
+      .from("user_profiles").select("*").eq("firebase_uid", decoded.uid).single();
+    if (profileError || profile.role !== "Admin") return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    const body = (await request.json()) as { orderIds?: unknown; region?: unknown };
+    const orderIds = Array.isArray(body.orderIds) ? body.orderIds.filter((id): id is string => typeof id === "string") : [];
+    const region = String(body.region ?? "");
+    if (!orderIds.length) return NextResponse.json({ error: "NO_ORDERS" }, { status: 400 });
+
+    const { data: orders, error: ordersError } = await supabase
+      .from("orders")
+      .select("id,province_name")
+      .eq("organization_id", profile.organization_id)
+      .in("id", orderIds);
+    if (ordersError) throw ordersError;
+    if (!orders || orders.length !== orderIds.length || orders.some((order) => logisticsRegion(order.province_name) !== region)) {
+      return NextResponse.json({ error: "REGION_MISMATCH" }, { status: 409 });
+    }
+    const now = new Date().toISOString();
+    await supabase.from("couriers").upsert({
+      id: decoded.uid,
+      organization_id: profile.organization_id,
+      user_uid: decoded.uid,
+      full_name: profile.name || decoded.name || "Administrador",
+      email: profile.email || decoded.email || "",
+      phone: profile.phone || "",
+      operational_type: "admin_courier",
+      status: "on_route",
+      active: true,
+      updated_at: now,
+    }, { onConflict: "id" });
+    await supabase.from("user_profiles").update({
+      courier_id: decoded.uid,
+      courier_mode_enabled: true,
+      updated_at: now,
+    }).eq("firebase_uid", decoded.uid);
+    const { error: assignError } = await supabase.from("orders").update({
+      courier_id: decoded.uid,
+      courier_uid: decoded.uid,
+      courier_name: profile.name || "Administrador",
+      courier_type: "admin_courier",
+      status: "assigned",
+      updated_at: now,
+    }).eq("organization_id", profile.organization_id).in("id", orderIds);
+    if (assignError) throw assignError;
+    await supabase.from("courier_routes").update({
+      status: "cancelled",
+      updated_at: now,
+    })
+      .eq("organization_id", profile.organization_id)
+      .eq("courier_id", decoded.uid)
+      .eq("status", "active");
+    const id = `RTE-${Date.now()}`;
+    const label = routeLabel(region as any, orders[0]?.province_name);
+    const { error: routeError } = await supabase.from("courier_routes").insert({
+      id,
+      organization_id: profile.organization_id,
+      courier_id: decoded.uid,
+      courier_uid: decoded.uid,
+      status: "active",
+      order_ids: orderIds,
+      current_order_index: 0,
+      metadata: { region, label, initiatedBy: "admin", createdAt: now },
+      created_at: now,
+      updated_at: now,
+    });
+    if (routeError) throw routeError;
+    return NextResponse.json({ success: true, routeId: id, courierId: decoded.uid, label });
+  } catch (error) {
+    console.error("Error starting regional route:", error);
+    return NextResponse.json({ error: "ROUTE_START_FAILED" }, { status: 500 });
+  }
+}

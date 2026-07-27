@@ -13,7 +13,6 @@ import {
   Truck,
   X,
   Save,
-  LogOut,
   Package2,
   Settings,
   Loader2,
@@ -22,37 +21,19 @@ import {
   Mail,
   Calendar,
 } from 'lucide-react';
-import { collection, query, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
 import AuthenticatedUserMenu from '@/components/auth/AuthenticatedUserMenu';
+import LogoutButton from '@/components/auth/LogoutButton';
+import {
+  listCouriers,
+  subscribeCouriers,
+  updateCourier,
+  type CourierRecord,
+} from '@/lib/supabase/couriers';
 
 export type CourierStatus = 'available' | 'on_route' | 'paused' | 'offline' | 'suspended';
 
-export interface CourierItem {
-  id: string;
-  userUid?: string;
-  name: string;
-  cedula?: string;
-  phone: string;
-  email?: string;
-  address?: string;
-  licenseNumber?: string;
-  vehicle: {
-    type: string;
-    plate: string;
-  };
-  assignedZone?: string;
-  status: CourierStatus;
-  active: boolean;
-  createdAt?: string;
-  lastActiveAt?: string;
-  cashInStreet?: number;
-  activeOrderCount?: number;
-  completedOrderCount?: number;
-  commissionType?: string;
-  commissionValue?: number;
-}
+export interface CourierItem extends CourierRecord {}
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; dot: string }> = {
   available: { label: 'Disponible',        color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', dot: 'bg-emerald-500' },
@@ -83,7 +64,7 @@ const EMPTY_FORM: FormState = {
 };
 
 export default function MensajerosPage() {
-  const { profile } = useAuth() as any;
+  const { profile, user } = useAuth() as any;
 
   // Real Firestore States
   const [couriers, setCouriers] = useState<CourierItem[]>([]);
@@ -107,48 +88,24 @@ export default function MensajerosPage() {
     setLoading(true);
     setError(null);
 
-    const q = query(collection(db, 'couriers'));
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const list: CourierItem[] = snapshot.docs.map((docSnap) => {
-          const o = docSnap.data();
-          return {
-            id: docSnap.id,
-            userUid: o.userUid || docSnap.id,
-            name: o.fullName || o.name || 'Motorista',
-            cedula: o.identificationNumber || o.cedula || '',
-            phone: o.phone || '',
-            email: o.email || '',
-            address: o.address || '',
-            licenseNumber: o.licenseNumber || '',
-            vehicle: {
-              type: o.vehicleType || o.vehicle?.type || 'motocicleta',
-              plate: o.vehiclePlate || o.vehicle?.plate || '—',
-            },
-            assignedZone: o.assignedZone || '—',
-            status: (o.status || (o.active === false ? 'suspended' : 'available')) as CourierStatus,
-            active: o.active !== undefined ? o.active : true,
-            createdAt: o.createdAt || '',
-            lastActiveAt: o.updatedAt || o.lastActiveAt || '',
-            cashInStreet: o.cashInStreet || 0,
-            activeOrderCount: o.currentOrderCount || o.activeOrderCount || 0,
-            completedOrderCount: o.completedOrderCount || 0,
-            commissionType: o.commissionType || 'fixed',
-            commissionValue: o.commissionValue || 100,
-          };
-        });
-        setCouriers(list);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("Error listening to couriers in Firestore:", err);
-        setError("No pudimos cargar los mensajeros.");
-        setLoading(false);
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const list = await listCouriers();
+        if (!disposed) setCouriers(list);
+      } catch (err) {
+        console.error("Error loading couriers from Supabase:", err);
+        if (!disposed) setError("No pudimos cargar los mensajeros.");
+      } finally {
+        if (!disposed) setLoading(false);
       }
-    );
-
-    return unsubscribe;
+    };
+    void refresh();
+    const unsubscribe = subscribeCouriers(() => void refresh());
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
   };
 
   useEffect(() => {
@@ -195,30 +152,33 @@ export default function MensajerosPage() {
 
     try {
       if (editing) {
-        const courierRef = doc(db, 'couriers', editing.id);
-        await updateDoc(courierRef, {
+        await updateCourier(editing.id, {
           fullName: form.name,
-          identificationNumber: form.cedula,
           phone: form.phone,
           email: form.email,
-          address: form.address,
-          licenseNumber: form.licenseNumber,
           vehicleType: form.vehicleType,
           vehiclePlate: form.vehiclePlate,
-          assignedZone: form.assignedZone,
           commissionType: form.commissionType,
-          commissionValue: Number(form.commissionValue),
-          updatedAt: new Date().toISOString()
+          commissionValue: Number.parseFloat(String(form.commissionValue)) || 0,
+          metadata: {
+            identificationNumber: form.cedula || '',
+            address: form.address || '',
+            licenseNumber: form.licenseNumber || '',
+            assignedZone: form.assignedZone || '',
+          },
         });
 
         triggerToast(`Motorista "${form.name}" actualizado.`);
         setShowModal(false);
       } else {
         const tempPassword = Math.random().toString(36).slice(-8) + 'A1!';
+        const token = await user?.getIdToken();
+        if (!token) throw new Error('UNAUTHENTICATED');
         const response = await fetch('/api/admin/couriers', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             fullName: form.name,
@@ -229,6 +189,10 @@ export default function MensajerosPage() {
             vehicleType: form.vehicleType,
             vehiclePlate: form.vehiclePlate,
             assignedZone: form.assignedZone,
+            address: form.address,
+            licenseNumber: form.licenseNumber,
+            commissionType: form.commissionType,
+            commissionValue: Number.parseFloat(String(form.commissionValue)) || 0,
             createdByUid: profile?.uid || 'ADMIN',
           }),
         });
@@ -259,24 +223,40 @@ export default function MensajerosPage() {
     if (!confirm(`¿Dar de baja a ${name}?`)) return;
 
     try {
-      await deleteDoc(doc(db, 'couriers', id));
+      const courier = couriers.find((item) => item.id === id);
+      if (!courier) throw new Error('COURIER_NOT_FOUND');
+      await updateCourier(id, {
+        fullName: courier.name,
+        email: courier.email,
+        phone: courier.phone,
+        vehicleType: courier.vehicle.type,
+        vehiclePlate: courier.vehicle.plate,
+        status: 'suspended',
+        active: false,
+      });
       triggerToast(`Motorista "${name}" dado de baja.`);
     } catch (error) {
-      console.error("Error deleting courier in Firestore:", error);
+      console.error("Error deactivating courier in Supabase:", error);
       alert("Error al dar de baja al motorista.");
     }
   };
 
   const changeStatus = async (id: string, status: CourierStatus) => {
     try {
-      await updateDoc(doc(db, 'couriers', id), {
+      const courier = couriers.find((item) => item.id === id);
+      if (!courier) throw new Error('COURIER_NOT_FOUND');
+      await updateCourier(id, {
+        fullName: courier.name,
+        email: courier.email,
+        phone: courier.phone,
+        vehicleType: courier.vehicle.type,
+        vehiclePlate: courier.vehicle.plate,
         status,
         active: status !== 'suspended' && status !== 'offline',
-        updatedAt: new Date().toISOString()
       });
       triggerToast(`Estado cambiado a ${STATUS_CONFIG[status]?.label || status}.`);
     } catch (error) {
-      console.error("Error updating courier status in Firestore:", error);
+      console.error("Error updating courier status in Supabase:", error);
     }
   };
 
@@ -304,8 +284,8 @@ export default function MensajerosPage() {
       {/* Sidebar */}
       <aside className="w-[260px] bg-white border-r border-[#E7E7EC] flex flex-col fixed top-0 bottom-0 left-0 z-40">
         <div className="p-4 border-b border-[#E7E7EC] flex items-center justify-center">
-          <div className="relative w-[200px] h-16">
-            <Image src="/logo.png" alt="EnkargoRD" fill className="object-contain object-center" priority />
+          <div className="relative h-11 w-[210px]">
+            <Image src="/logo-horizontal.png" alt="EnkargoRD" fill className="object-contain object-center" priority />
           </div>
         </div>
         <nav className="p-3 space-y-1 flex-1">
@@ -330,9 +310,9 @@ export default function MensajerosPage() {
           ))}
         </nav>
         <div className="p-4 border-t border-[#E7E7EC]">
-          <Link href="/" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all">
-            <LogOut size={16} /> Cerrar sesión
-          </Link>
+          <LogoutButton className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all">
+            Cerrar sesión
+          </LogoutButton>
         </div>
       </aside>
 

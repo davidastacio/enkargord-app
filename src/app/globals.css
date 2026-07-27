@@ -33,6 +33,38 @@ body {
   padding: 0;
 }
 
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+@media (max-width: 1023px) {
+  .admin-responsive-shell aside.fixed {
+    display: none;
+  }
+
+  .admin-responsive-shell main[class*="pl-"],
+  .admin-responsive-shell div[class*="pl-"] {
+    padding-left: 0;
+    min-width: 0;
+  }
+
+  .admin-responsive-shell header {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .admin-responsive-shell table {
+    min-width: 720px;
+  }
+}
+
 /* Custom scrollbars for tables */
 .custom-scrollbar::-webkit-scrollbar {
   height: 6px;

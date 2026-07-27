@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import CourierLocationSharing from '@/components/courier/CourierLocationSharing';
 import {
   Home,
   Package,
@@ -12,7 +13,6 @@ import {
   CheckCircle,
   DollarSign,
   User,
-  LogOut,
   Menu,
   X,
   Wifi,
@@ -42,11 +42,48 @@ const navItems = [
 ];
 
 import RouteGuard from '@/components/auth/RouteGuard';
+import { useAuth } from '@/hooks/useAuth';
+import LogoutButton from '@/components/auth/LogoutButton';
 
 export default function MotoristaLayout({ children }: { children: React.ReactNode }) {
+  const { user, profile } = useAuth();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [motorStatus, setMotorStatus] = useState<MotoristaStatus>('available');
+  const [courierName, setCourierName] = useState(profile?.name || 'Motorista');
+  const [courierPlate, setCourierPlate] = useState('');
+
+  useEffect(() => {
+    if (!user) return;
+    void user.getIdToken().then(async (token) => {
+      const response = await fetch('/api/courier/profile', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return;
+      const { courier } = await response.json();
+      setCourierName(courier.full_name || profile?.name || 'Motorista');
+      setCourierPlate(courier.vehicle_plate || '');
+      setMotorStatus(courier.status === 'suspended' ? 'offline' : courier.status);
+    });
+  }, [profile?.name, user]);
+
+  const changeMotorStatus = async (status: MotoristaStatus) => {
+    const previous = motorStatus;
+    setMotorStatus(status);
+    try {
+      const token = await user?.getIdToken();
+      if (!token) throw new Error('UNAUTHENTICATED');
+      const response = await fetch('/api/courier/profile', {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: status === 'paused' ? 'offline' : status }),
+      });
+      if (!response.ok) throw new Error('STATUS_UPDATE_FAILED');
+    } catch (error) {
+      console.error(error);
+      setMotorStatus(previous);
+    }
+  };
 
   const cfg = STATUS_CONFIG[motorStatus];
   const StatusIcon = cfg.icon;
@@ -61,8 +98,8 @@ export default function MotoristaLayout({ children }: { children: React.ReactNod
     >
       {/* Logo */}
       <div className="p-4 border-b border-[#E7E7EC] flex items-center justify-between">
-        <div className="relative w-[160px] h-14">
-          <Image src="/logo.png" alt="EnkargoRD" fill className="object-contain object-left" priority />
+        <div className="relative h-11 w-[200px]">
+          <Image src="/logo-horizontal.png" alt="EnkargoRD" fill className="object-contain object-left" priority />
         </div>
         {mobile && (
           <button onClick={() => setSidebarOpen(false)} className="p-2 rounded-xl hover:bg-slate-100">
@@ -75,11 +112,11 @@ export default function MotoristaLayout({ children }: { children: React.ReactNod
       <div className="p-4 border-b border-[#E7E7EC]">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-[#fee2e2] border-2 border-[#d3121a]/20 flex items-center justify-center font-bold text-[#d3121a] text-sm flex-shrink-0">
-            CM
+            {courierName.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <div className="font-bold text-xs text-slate-800 truncate">Carlos Martínez</div>
-            <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Motorista · K-123456</div>
+            <div className="font-bold text-xs text-slate-800 truncate">{courierName}</div>
+            <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Motorista {courierPlate ? `· ${courierPlate}` : ''}</div>
           </div>
         </div>
       </div>
@@ -123,7 +160,7 @@ export default function MotoristaLayout({ children }: { children: React.ReactNod
           {(Object.entries(STATUS_CONFIG) as [MotoristaStatus, typeof cfg][]).map(([key, s]) => (
             <button
               key={key}
-              onClick={() => setMotorStatus(key)}
+              onClick={() => void changeMotorStatus(key)}
               className={`py-2 px-2 text-[10px] font-bold rounded-lg border transition-all ${
                 motorStatus === key
                   ? `${s.bg} ${s.color} border-current`
@@ -135,13 +172,11 @@ export default function MotoristaLayout({ children }: { children: React.ReactNod
           ))}
         </div>
 
-        <Link
-          href="/"
+        <LogoutButton
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all"
         >
-          <LogOut size={16} />
           Cerrar sesión
-        </Link>
+        </LogoutButton>
       </div>
     </aside>
   );
@@ -149,6 +184,7 @@ export default function MotoristaLayout({ children }: { children: React.ReactNod
   return (
     <RouteGuard allowedRoles={['Motorista', 'Admin']}>
       <div className="min-h-screen bg-[#F8F9FB] font-sans text-slate-800 antialiased">
+        <CourierLocationSharing />
         {/* ── Desktop Sidebar ─────────────────────── */}
         <div className="hidden lg:block">
           <Sidebar />
@@ -198,7 +234,7 @@ export default function MotoristaLayout({ children }: { children: React.ReactNod
 
               {/* Avatar */}
               <div className="w-9 h-9 rounded-full bg-[#fee2e2] border-2 border-[#d3121a]/20 flex items-center justify-center font-bold text-[#d3121a] text-sm">
-                CM
+                {courierName.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
               </div>
             </div>
           </header>

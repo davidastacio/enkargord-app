@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { LogOut, ChevronDown, Store, Shield, User, Loader2 } from 'lucide-react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
+import { getSupabaseStore } from '@/lib/supabase/stores';
+import { useRouter } from 'next/navigation';
 
 interface StoreData {
   id: string;
@@ -15,6 +15,7 @@ interface StoreData {
 }
 
 export default function AuthenticatedUserMenu() {
+  const router = useRouter();
   const { user, profile, logout } = useAuth() as any;
   const [storeData, setStoreData] = useState<StoreData | null>(null);
   const [loadingStore, setLoadingStore] = useState(false);
@@ -26,9 +27,9 @@ export default function AuthenticatedUserMenu() {
         setLoadingStore(true);
         try {
           const sId = profile.storeId || profile.uid;
-          const snap = await getDoc(doc(db, 'stores', sId));
-          if (snap.exists()) {
-            setStoreData({ id: snap.id, ...snap.data() });
+          const store = await getSupabaseStore(sId);
+          if (store) {
+            setStoreData({ id: store.id, commercialName: store.commercialName });
           }
         } catch (e) {
           console.error("Error fetching store profile:", e);
@@ -122,6 +123,8 @@ export default function AuthenticatedUserMenu() {
                 onClick={async () => {
                   setIsOpen(false);
                   await logout();
+                  router.push('/login');
+                  router.refresh();
                 }}
                 className="w-full text-left px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
               >

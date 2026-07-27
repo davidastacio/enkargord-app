@@ -13,7 +13,7 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return isAuthenticated() && (getUserData().role == 'admin' || getUserData().role == 'Administrador');
+      return isAuthenticated() && (getUserData().role == 'admin' || getUserData().role == 'Admin' || getUserData().role == 'Administrador');
     }
 
     function isStore() {
@@ -30,9 +30,18 @@ service cloud.firestore {
 
     // Users collection rules
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isOwner(userId) || isAdmin();
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId)
+        && request.resource.data.role in ['Tienda', 'Motorista', 'Cliente', 'store', 'courier', 'customer'];
+      allow update: if isAdmin()
+        || (isOwner(userId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name',
+            'displayName',
+            'phone',
+            'photoURL',
+            'updatedAt'
+          ]));
       allow delete: if isAdmin();
     }
 
@@ -45,14 +54,23 @@ service cloud.firestore {
 
     // Orders collection rules
     match /orders/{orderId} {
-      allow read: if isAuthenticated();
+      allow read: if isAdmin()
+        || (isStore() && (resource.data.storeId == request.auth.uid || resource.data.storeId == getUserData().storeId))
+        || (isCourier() && resource.data.courierId == request.auth.uid);
       allow create: if isAdmin() || (isStore() && (request.resource.data.storeId == request.auth.uid || request.resource.data.storeId == getUserData().storeId));
-      allow update: if isAdmin() || isCourier() || (isStore() && (resource.data.storeId == request.auth.uid || resource.data.storeId == getUserData().storeId));
+      allow update: if isAdmin()
+        || (isCourier() && resource.data.courierId == request.auth.uid)
+        || (isStore() && (resource.data.storeId == request.auth.uid || resource.data.storeId == getUserData().storeId));
       allow delete: if isAdmin();
 
       // Subcollection order events
       match /events/{eventId} {
-        allow read, create: if isAuthenticated();
+        allow read: if isAdmin()
+          || (isStore() && (get(/databases/$(database)/documents/orders/$(orderId)).data.storeId == request.auth.uid
+            || get(/databases/$(database)/documents/orders/$(orderId)).data.storeId == getUserData().storeId))
+          || (isCourier() && get(/databases/$(database)/documents/orders/$(orderId)).data.courierId == request.auth.uid);
+        allow create: if isAdmin()
+          || (isCourier() && get(/databases/$(database)/documents/orders/$(orderId)).data.courierId == request.auth.uid);
       }
     }
 

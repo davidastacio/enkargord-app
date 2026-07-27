@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   CheckCircle,
   DollarSign,
@@ -16,7 +16,9 @@ import {
   Building2,
   User,
 } from 'lucide-react';
-import { DEFAULT_ORDERS, DEFAULT_PRICING, type CourierOrder, type PaymentMethod } from '@/data/courier';
+import { type PaymentMethod } from '@/data/courier';
+import { useCourierOrders } from '@/hooks/useCourierOrders';
+import { updateSupabaseOrder } from '@/lib/supabase/orders';
 
 const PAYMENT_METHODS: { key: PaymentMethod; label: string; icon: React.ElementType }[] = [
   { key: 'cash',     label: 'Efectivo',        icon: Banknote },
@@ -26,37 +28,28 @@ const PAYMENT_METHODS: { key: PaymentMethod; label: string; icon: React.ElementT
 ];
 
 export default function EntregadosPage() {
-  const [orders, setOrders] = useState<CourierOrder[]>([]);
+  const { orders, setOrders, courierId } = useCourierOrders();
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [pricing, setPricing] = useState(DEFAULT_PRICING);
-
-  useEffect(() => {
-    const stored = localStorage.getItem('enkargord_courier_orders');
-    setOrders(stored ? JSON.parse(stored) : DEFAULT_ORDERS);
-    const storedPricing = localStorage.getItem('enkargord_pricing');
-    if (storedPricing) setPricing(JSON.parse(storedPricing));
-  }, []);
-
-  const saveOrders = (updated: CourierOrder[]) => {
-    setOrders(updated);
-    localStorage.setItem('enkargord_courier_orders', JSON.stringify(updated));
-  };
 
   const deliveredOrders = orders.filter(
-    (o) => o.courierId === 'COU-001' && o.status === 'delivered'
+    (o) => o.courierId === courierId && o.status === 'delivered'
   );
 
   const totalCollected    = deliveredOrders.reduce((s, o) => s + (o.amountCollected ?? 0), 0);
   const totalForStores    = deliveredOrders.reduce((s, o) => s + o.financials.storeProductAmount, 0);
   const totalCommission   = deliveredOrders.reduce((s, o) => s + o.financials.courierCommission, 0);
   const totalBeneficiary  = deliveredOrders.reduce((s, o) => s + o.financials.transportCompanyAmount, 0);
-  const totalToDeliver    = totalCollected - totalCommission;
 
-  const setPaymentMethod = (orderId: string, method: PaymentMethod) => {
+  const setPaymentMethod = async (orderId: string, method: PaymentMethod) => {
     const updated = orders.map((o) =>
       o.id === orderId ? { ...o, paymentMethod: method } : o
     );
-    saveOrders(updated);
+    setOrders(updated);
+    try {
+      await updateSupabaseOrder(orderId, { paymentMethod: method });
+    } catch (error) {
+      console.error("Error updating payment method:", error);
+    }
   };
 
   return (
@@ -90,20 +83,6 @@ export default function EntregadosPage() {
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mi comisión</span>
           </div>
           <div className="text-xl font-extrabold text-violet-700">RD${totalCommission.toLocaleString()}</div>
-        </div>
-        <div className="bg-white border border-[#E7E7EC] rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-1">
-            <User size={13} className="text-amber-500" />
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Beneficiarios</span>
-          </div>
-          <div className="text-xl font-extrabold text-amber-700">RD${totalBeneficiary.toLocaleString()}</div>
-        </div>
-        <div className="bg-[#fee2e2] border border-red-200 rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-1">
-            <DollarSign size={13} className="text-[#d3121a]" />
-            <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest">A entregar</span>
-          </div>
-          <div className="text-xl font-extrabold text-[#d3121a]">RD${totalToDeliver.toLocaleString()}</div>
         </div>
       </div>
 
@@ -199,12 +178,6 @@ export default function EntregadosPage() {
                         <span className={`font-bold ${row.color}`}>RD${row.value.toLocaleString()}</span>
                       </div>
                     ))}
-                    <div className="border-t border-slate-200 pt-2 flex items-center justify-between text-xs">
-                      <span className="text-slate-700 font-bold">A entregar a empresa</span>
-                      <span className="font-extrabold text-[#d3121a]">
-                        RD${(fin.orderCollectionAmount - fin.courierCommission).toLocaleString()}
-                      </span>
-                    </div>
                   </div>
                 </div>
               )}

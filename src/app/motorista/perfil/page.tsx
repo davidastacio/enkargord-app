@@ -18,7 +18,9 @@ import {
   CheckCircle,
   TrendingUp,
 } from 'lucide-react';
-import { DEFAULT_COURIERS, type Courier, type VehicleInfo } from '@/data/courier';
+import { type Courier, type VehicleInfo } from '@/data/courier';
+import { useAuth } from '@/hooks/useAuth';
+import { useCourierOrders } from '@/hooks/useCourierOrders';
 
 const VEHICLE_ICONS: Record<string, React.ElementType> = {
   motocicleta: Bike,
@@ -29,6 +31,8 @@ const VEHICLE_ICONS: Record<string, React.ElementType> = {
 };
 
 export default function PerfilPage() {
+  const { user } = useAuth();
+  const { orders } = useCourierOrders();
   const [courier, setCourier] = useState<Courier | null>(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<{
@@ -40,13 +44,40 @@ export default function PerfilPage() {
     licenseNumber: '', vehicleType: '', vehiclePlate: '', vehicleModel: '', vehicleColor: '',
   });
   const [toast, setToast] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem('enkargord_couriers');
-    const couriers: Courier[] = stored ? JSON.parse(stored) : DEFAULT_COURIERS;
-    const me = couriers.find((c) => c.id === 'COU-001') ?? couriers[0] ?? null;
-    setCourier(me);
-    if (me) {
+    if (!user) return;
+    void user.getIdToken().then(async (token) => {
+      const response = await fetch('/api/courier/profile', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error('COURIER_PROFILE_READ_FAILED');
+      const { courier: row } = await response.json();
+      const metadata = row.metadata ?? {};
+      const me: Courier = {
+        id: row.id,
+        name: row.full_name,
+        phone: row.phone || '',
+        email: row.email || '',
+        cedula: metadata.identificationNumber || '',
+        address: metadata.address || '',
+        licenseNumber: metadata.licenseNumber || '',
+        vehicle: {
+          type: row.vehicle_type || 'motocicleta',
+          plate: row.vehicle_plate || '',
+          model: row.vehicle_model || '',
+          color: row.vehicle_color || '',
+        },
+        status: row.status === 'suspended' ? 'offline' : row.status,
+        commissionType: row.commission_type || 'fixed',
+        commissionValue: Number(row.commission_value || 0),
+        active: Boolean(row.active),
+        suspended: row.status === 'suspended',
+        createdAt: row.created_at,
+        cashInStreet: Number(metadata.cashInStreet || 0),
+      };
+      setCourier(me);
       setForm({
         name: me.name,
         phone: me.phone,
@@ -59,16 +90,17 @@ export default function PerfilPage() {
         vehicleModel: me.vehicle.model ?? '',
         vehicleColor: me.vehicle.color ?? '',
       });
-    }
-  }, []);
+    }).catch((error) => console.error('Error loading courier profile:', error));
+  }, [user]);
 
   const triggerToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!courier) return;
+    setSaving(true);
     const updated: Courier = {
       ...courier,
       name: form.name ?? courier.name,
@@ -85,22 +117,31 @@ export default function PerfilPage() {
       } as VehicleInfo,
     };
 
-    const stored = localStorage.getItem('enkargord_couriers');
-    const couriers: Courier[] = stored ? JSON.parse(stored) : DEFAULT_COURIERS;
-    const updatedList = couriers.map((c) => (c.id === updated.id ? updated : c));
-    localStorage.setItem('enkargord_couriers', JSON.stringify(updatedList));
-    setCourier(updated);
-    setEditing(false);
-    triggerToast('Perfil actualizado correctamente.');
+    try {
+      const token = await user?.getIdToken();
+      if (!token) throw new Error('UNAUTHENTICATED');
+      const response = await fetch('/api/courier/profile', {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      if (!response.ok) throw new Error('COURIER_PROFILE_UPDATE_FAILED');
+      setCourier(updated);
+      setEditing(false);
+      triggerToast('Perfil actualizado correctamente.');
+    } catch (error) {
+      console.error(error);
+      triggerToast('No se pudo actualizar el perfil.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!courier) return null;
 
   const VehicleIcon = VEHICLE_ICONS[courier.vehicle.type] ?? VEHICLE_ICONS.default;
 
-  const statOrders = localStorage.getItem('enkargord_courier_orders');
-  const allOrders = statOrders ? JSON.parse(statOrders) : [];
-  const myOrders = allOrders.filter((o: { courierId: string }) => o.courierId === courier.id);
+  const myOrders = orders.filter((o) => o.courierId === courier.id);
   const delivered = myOrders.filter((o: { status: string }) => o.status === 'delivered').length;
   const totalCommission = myOrders
     .filter((o: { status: string }) => o.status === 'delivered')
@@ -139,7 +180,8 @@ export default function PerfilPage() {
               <X size={18} />
             </button>
             <button
-              onClick={handleSave}
+              onClick={() => void handleSave()}
+              disabled={saving}
               className="flex items-center gap-2 text-sm font-bold text-white bg-[#d3121a] hover:bg-[#b00f14] px-4 py-2 rounded-xl transition-all"
             >
               <Save size={14} /> Guardar

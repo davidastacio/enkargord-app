@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { CreditCard, DollarSign, ArrowUpRight, ArrowDownRight, Loader2, Package } from 'lucide-react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { subscribeSupabaseOrders } from '@/lib/supabase/orders';
 
 interface PaymentRow {
   date: string;
@@ -23,10 +22,7 @@ export default function StorePayments() {
     if (profile?.uid) {
       setLoading(true);
       const storeId = profile.storeId || profile.uid;
-      const q = query(collection(db, 'orders'), where('storeId', '==', storeId));
-
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const unsubscribe = subscribeSupabaseOrders({ storeId }, (list) => {
         setOrders(list);
         setLoading(false);
       }, (err) => {
@@ -40,7 +36,7 @@ export default function StorePayments() {
     }
   }, [profile]);
 
-  // Dynamic Financial Calculations from real Firestore orders
+  // Dynamic Financial Calculations from Supabase orders
   const deliveredOrders = orders.filter(o => o.status === 'delivered');
   const pendingSettlementOrders = orders.filter(o => o.status === 'delivered' && o.settlementStatus !== 'settled');
 
@@ -61,7 +57,7 @@ export default function StorePayments() {
     return (
       <div className="py-20 text-center flex flex-col items-center justify-center gap-3">
         <Loader2 size={28} className="animate-spin text-[#d3121a]" />
-        <span className="text-xs font-bold text-slate-400">Cargando datos de pagos y liquidaciones desde Firestore...</span>
+        <span className="text-xs font-bold text-slate-400">Cargando datos de pagos y liquidaciones...</span>
       </div>
     );
   }

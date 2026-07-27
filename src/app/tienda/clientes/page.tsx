@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { Search, User, Phone, Mail, Award, Loader2, Package } from 'lucide-react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { subscribeSupabaseOrders } from '@/lib/supabase/orders';
 
 interface ClientItem {
   name: string;
@@ -25,13 +24,11 @@ export default function StoreClients() {
     if (profile?.uid) {
       setLoading(true);
       const storeId = profile.storeId || profile.uid;
-      const q = query(collection(db, 'orders'), where('storeId', '==', storeId));
-
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+      const unsubscribe = subscribeSupabaseOrders({ storeId }, (storeOrders) => {
         const clientMap: Record<string, ClientItem> = {};
 
-        snapshot.docs.forEach((docSnap) => {
-          const o = docSnap.data();
+        storeOrders.forEach((rawOrder) => {
+          const o = rawOrder as any;
           const name = o.customerName || 'Cliente';
           const phone = o.customerPhone || 'N/A';
           const email = o.customerEmail || 'N/A';

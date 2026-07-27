@@ -1,0 +1,6 @@
+project_id = "enkargord"
+
+[auth.third_party.firebase]
+enabled = true
+project_id = "enkargord-app-2026"
+

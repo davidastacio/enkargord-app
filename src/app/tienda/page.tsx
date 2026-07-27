@@ -13,9 +13,8 @@ import {
   Users
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { subscribeSupabaseOrders } from '@/lib/supabase/orders';
 
 interface OrderRow {
   id: string;
@@ -41,20 +40,18 @@ export default function StoreDashboard() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load from Firestore in real-time
+  // Load from Supabase Realtime
   useEffect(() => {
     if (profile?.uid) {
       setLoading(true);
       const storeId = profile.storeId || profile.uid;
-      const q = query(collection(db, 'orders'), where('storeId', '==', storeId));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const firestoreOrders = snapshot.docs.map((docSnap) => {
-          const o = docSnap.data();
+      const unsubscribe = subscribeSupabaseOrders({ storeId }, (supabaseOrders) => {
+        const firestoreOrders = supabaseOrders.map((o: any) => {
           const timeString = o.createdAt 
             ? new Date(o.createdAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })
             : 'N/A';
           return {
-            id: docSnap.id,
+            id: o.id,
             trackingId: o.tracking || o.id,
             customerName: o.customerName || 'Cliente',
             customerPhone: o.customerPhone || '',

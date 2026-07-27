@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { Settings, Save, Lock, Loader2 } from 'lucide-react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { getSupabaseStore, updateSupabaseStore } from '@/lib/supabase/stores';
 
 export default function StoreSettings() {
-  const { user, profile } = useAuth() as any;
+  const { user, profile, refreshProfile } = useAuth() as any;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -16,6 +15,10 @@ export default function StoreSettings() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [accountHolder, setAccountHolder] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [accountType, setAccountType] = useState<'Ahorros' | 'Corriente'>('Ahorros');
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -27,16 +30,19 @@ export default function StoreSettings() {
         setLoading(true);
         try {
           const storeId = profile.storeId || profile.uid;
-          const ref = doc(db, 'stores', storeId);
-          const snap = await getDoc(ref);
+          const data = await getSupabaseStore(storeId);
 
-          if (snap.exists()) {
-            const data = snap.data();
-            setStoreName(data.commercialName || data.name || profile.name || '');
-            setRnc(data.rnc || '');
+          if (data) {
+            setStoreName(data.commercialName || profile.name || '');
+            setRnc(String(data.settings?.rnc || ''));
             setPhone(data.phone || profile.phone || '');
             setEmail(data.email || profile.email || user?.email || '');
             setAddress(data.address || '');
+            const bank = (data.settings?.bankAccount || {}) as Record<string, unknown>;
+            setBankName(String(bank.bankName || ''));
+            setAccountHolder(String(bank.accountHolder || ''));
+            setAccountNumber(String(bank.accountNumber || ''));
+            setAccountType(bank.accountType === 'Corriente' ? 'Corriente' : 'Ahorros');
           } else {
             setStoreName(profile.name || '');
             setPhone(profile.phone || '');
@@ -64,20 +70,33 @@ export default function StoreSettings() {
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile?.uid) return;
+    const normalizedStoreName = storeName.trim();
+    if (!normalizedStoreName) {
+      triggerToast("El nombre comercial es obligatorio.");
+      return;
+    }
 
     setSaving(true);
     try {
       const storeId = profile.storeId || profile.uid;
-      await setDoc(doc(db, 'stores', storeId), {
-        commercialName: storeName,
-        rnc,
-        phone,
-        email,
-        address,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+      await updateSupabaseStore(storeId, {
+        commercialName: normalizedStoreName,
+        phone: phone.trim(),
+        email: email.trim().toLowerCase(),
+        address: address.trim(),
+        settings: {
+          rnc,
+          bankAccount: {
+            bankName: bankName.trim(),
+            accountHolder: accountHolder.trim(),
+            accountNumber: accountNumber.trim(),
+            accountType,
+          },
+        },
+      });
+      await refreshProfile();
 
-      triggerToast("Datos comerciales guardados en Firestore correctamente.");
+      triggerToast("Datos comerciales guardados correctamente.");
     } catch (err) {
       console.error("Error saving store profile:", err);
       triggerToast("Error al guardar los cambios en la base de datos.");
@@ -121,7 +140,7 @@ export default function StoreSettings() {
       <div>
         <h2 className="text-xl font-extrabold text-slate-950 tracking-tight">Configuración</h2>
         <p className="text-xs text-slate-400 mt-1 font-medium">
-          Administra las credenciales comerciales, RNC y datos reales de tu negocio en Firestore.
+          Administra las credenciales comerciales, RNC y datos reales de tu negocio.
         </p>
       </div>
 
@@ -190,6 +209,31 @@ export default function StoreSettings() {
                 placeholder="Calle Central #1, Santo Domingo"
                 className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
               />
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+              <h4 className="mb-3 text-xs font-extrabold text-slate-800">Cuenta bancaria para recibir liquidaciones</h4>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Banco</label>
+                  <input type="text" value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="Ej. Banco Popular" className="w-full rounded-xl border border-[#E7E7EC] px-4 py-2.5 text-xs font-semibold focus:border-[#d3121a] focus:outline-none" />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Tipo de cuenta</label>
+                  <select value={accountType} onChange={(e) => setAccountType(e.target.value as 'Ahorros' | 'Corriente')} className="w-full rounded-xl border border-[#E7E7EC] px-4 py-2.5 text-xs font-semibold focus:border-[#d3121a] focus:outline-none">
+                    <option value="Ahorros">Ahorros</option>
+                    <option value="Corriente">Corriente</option>
+                  </select>
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Titular de la cuenta</label>
+                  <input type="text" value={accountHolder} onChange={(e) => setAccountHolder(e.target.value)} placeholder="Nombre completo o razón social" className="w-full rounded-xl border border-[#E7E7EC] px-4 py-2.5 text-xs font-semibold focus:border-[#d3121a] focus:outline-none" />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Número de cuenta</label>
+                  <input type="text" inputMode="numeric" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value.replace(/[^\d-]/g, ''))} placeholder="Número de cuenta bancaria" className="w-full rounded-xl border border-[#E7E7EC] px-4 py-2.5 font-mono text-xs font-semibold focus:border-[#d3121a] focus:outline-none" />
+                </div>
+              </div>
             </div>
 
             <button 

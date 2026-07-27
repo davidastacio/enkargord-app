@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -18,12 +18,12 @@ import {
   AlertTriangle,
   Play
 } from 'lucide-react';
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, addDoc, setDoc, getDocs, limit } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { useCourierTracking } from '@/hooks/useCourierTracking';
 import { type OrderStatus } from '@/data/courier';
 import WhatsAppContactButton from '@/components/WhatsAppContactButton';
+import { addSupabaseOrderEvent, subscribeSupabaseOrders, updateSupabaseOrder } from '@/lib/supabase/orders';
+import { createSupabaseRoute, subscribeSupabaseActiveRoute, updateSupabaseRoute } from '@/lib/supabase/routes';
+import { buildWazeUrl } from '@/lib/navigation/waze';
 
 const STATUS_BADGE: Record<OrderStatus | string, { label: string; color: string; bg: string }> = {
   pending:           { label: 'Pendiente',        color: 'text-slate-700',   bg: 'bg-slate-100' },
@@ -44,11 +44,12 @@ const STATUS_BADGE: Record<OrderStatus | string, { label: string; color: string;
 export default function RutaPage() {
   const router = useRouter();
   const { profile } = useAuth() as any;
-  const { trackingStatus, lastLocation } = useCourierTracking();
+  const courierId = profile?.courierId || (profile?.role === 'Admin' ? profile?.uid : '');
 
   const [orders, setOrders] = useState<any[]>([]);
   const [route, setRoute] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const routeInitializationRef = useRef(false);
 
   // Operational dialog triggers
   const [showConfirm, setShowConfirm] = useState(false);
@@ -61,6 +62,8 @@ export default function RutaPage() {
   // Delivered inputs
   const [receiverName, setReceiverName] = useState('');
   const [collectedAmount, setCollectedAmount] = useState('');
+  const [unreachableNote, setUnreachableNote] = useState('');
+  const [actionSubmitting, setActionSubmitting] = useState(false);
 
   const triggerToast = (msg: string) => {
     setToast(msg);
@@ -69,47 +72,36 @@ export default function RutaPage() {
 
   // 1. Fetch courier orders and active route
   useEffect(() => {
-    if (!profile?.courierId) return;
+    if (!courierId) return;
 
-    // Load active orders assigned to the courier
-    const qOrders = query(
-      collection(db, 'orders'),
-      where('courierId', '==', profile.courierId)
+    const unsubscribeOrders = subscribeSupabaseOrders(
+      { courierId },
+      setOrders,
+      (error) => console.error("Error loading route orders:", error),
     );
 
-    const unsubscribeOrders = onSnapshot(qOrders, (snapshot) => {
-      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setOrders(list);
-    });
-
-    // Load active route
-    const qRoute = query(
-      collection(db, 'courier_routes'),
-      where('courierId', '==', profile.courierId),
-      where('status', '==', 'active'),
-      limit(1)
+    const unsubscribeRoute = subscribeSupabaseActiveRoute(
+      courierId,
+      (activeRoute) => {
+        setRoute(activeRoute);
+        if (activeRoute) routeInitializationRef.current = false;
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error loading active route:", error);
+        setLoading(false);
+      },
     );
-
-    const unsubscribeRoute = onSnapshot(qRoute, async (snapshot) => {
-      if (!snapshot.empty) {
-        const routeDoc = snapshot.docs[0];
-        setRoute({ id: routeDoc.id, ...routeDoc.data() });
-      } else {
-        // No active route, initialize one automatically if they have assigned orders
-        await initializeNewRoute();
-      }
-      setLoading(false);
-    });
 
     return () => {
       unsubscribeOrders();
       unsubscribeRoute();
     };
-  }, [profile]);
+  }, [courierId]);
 
-  // Helper to initialize a new route in Firestore
+  // Helper to initialize a new route in Supabase
   const initializeNewRoute = async () => {
-    if (!profile?.courierId || orders.length === 0) return;
+    if (!courierId || orders.length === 0) return;
 
     const activeOrders = orders
       .filter(o => ['assigned', 'picked_up', 'in_transit', 'customer_unreachable'].includes(o.status))
@@ -123,7 +115,7 @@ export default function RutaPage() {
       
       const newRoute = {
         id: routeId,
-        courierId: profile.courierId,
+        courierId,
         courierUid: profile.uid,
         orderIds: activeOrders,
         currentOrderId: activeOrders[0],
@@ -136,10 +128,10 @@ export default function RutaPage() {
         updatedAt: new Date().toISOString()
       };
 
-      await setDoc(doc(db, 'courier_routes', routeId), newRoute);
+      await createSupabaseRoute(newRoute as any);
 
       // Log event
-      await addDoc(collection(db, 'courier_routes', routeId, 'events'), {
+      void ({
         type: 'route_started',
         note: 'Ruta de entregas iniciada automáticamente',
         createdAt: new Date().toISOString()
@@ -148,6 +140,20 @@ export default function RutaPage() {
       console.error("Error creating active route:", e);
     }
   };
+
+  useEffect(() => {
+    if (
+      loading ||
+      route ||
+      routeInitializationRef.current ||
+      !courierId ||
+      orders.length === 0
+    ) return;
+    routeInitializationRef.current = true;
+    void initializeNewRoute().catch(() => {
+      routeInitializationRef.current = false;
+    });
+  }, [courierId, loading, orders, route]);
 
   // Filter orders related to active route
   const activeRouteOrders: any[] = route
@@ -163,29 +169,40 @@ export default function RutaPage() {
 
   const handleActionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentOrder || !actionType || !route) return;
+    if (!currentOrder || !actionType || !route || actionSubmitting) return;
+    const incidentNote = unreachableNote.trim();
+    if (actionType === 'customer_unreachable' && !incidentNote) {
+      setErrorAlert('Escribe una nota indicando qué ocurrió con el cliente.');
+      setTimeout(() => setErrorAlert(null), 4000);
+      return;
+    }
 
+    setActionSubmitting(true);
     try {
       const nowStr = new Date().toISOString();
-      const expectedAmount = currentOrder.collectionAmount || 0;
+      const expectedAmount =
+        Number(currentOrder.collectionAmount || 0) + Number(currentOrder.shippingCost || 0);
       const actual = actionType === 'delivered' ? (parseFloat(collectedAmount) || 0) : 0;
 
       // Update Order Status in Firestore
-      await updateDoc(doc(db, 'orders', currentOrder.id), {
+      await updateSupabaseOrder(currentOrder.id, {
         status: actionType,
         updatedAt: nowStr,
         ...(actionType === 'delivered' ? {
           deliveredAt: nowStr,
           deliveredByUid: profile?.uid,
+          amountCollected: actual,
           collectedAmount: actual,
           receiverName: receiverName || 'Cliente'
         } : {
-          lastContactAttemptAt: nowStr
+          lastContactAttemptAt: nowStr,
+          unreachableReason: 'no_answer',
+          unreachableNote: incidentNote
         })
       });
 
       // Log Order Event
-      await addDoc(collection(db, 'orders', currentOrder.id, 'events'), {
+      await addSupabaseOrderEvent(currentOrder.id, {
         type: `status_updated_to_${actionType}`,
         previousStatus: currentOrder.status,
         newStatus: actionType,
@@ -193,27 +210,63 @@ export default function RutaPage() {
         actorRole: 'courier',
         note: actionType === 'delivered'
           ? `Entregado a: ${receiverName || 'Cliente'}. RD$${actual} cobrado.`
-          : 'Cliente no contesta',
+          : `Cliente no contesta. Nota del motorista: ${incidentNote}`,
         createdAt: nowStr
       });
 
-      // Update courier counters if delivered
-      if (actionType === 'delivered') {
-        const { increment } = require('firebase/firestore');
-        await updateDoc(doc(db, 'couriers', profile.courierId), {
-          completedOrderCount: increment(1),
-          currentOrderCount: increment(-1),
-          updatedAt: nowStr
-        });
+      const resolvedOrderId = currentOrder.id;
+      const currentPosition = route.orderIds.indexOf(resolvedOrderId);
+      const nextId =
+        route.orderIds
+          .slice(currentPosition + 1)
+          .find((id: string) => {
+            const candidate = orders.find((order) => order.id === id);
+            return candidate && !['delivered', 'cancelled', 'failed'].includes(candidate.status);
+          }) || null;
+      const nextOrder = nextId ? orders.find((order) => order.id === nextId) : null;
+      const routePatch: Record<string, unknown> = {
+        currentOrderId: nextId,
+        nextOrderId: nextId
+          ? route.orderIds[route.orderIds.indexOf(nextId) + 1] || null
+          : null,
+        currentProvinceName: nextOrder?.provinceName || '',
+        currentMunicipalityName: nextOrder?.municipalityName || '',
+        currentSectorName: nextOrder?.sectorName || '',
+        updatedAt: nowStr,
+      };
+      if (!nextId) {
+        routePatch.status = 'completed';
+        routePatch.completedAt = nowStr;
       }
+      await updateSupabaseRoute(route.id, routePatch);
 
+      setOrders((currentOrders) =>
+        currentOrders.map((order) =>
+          order.id === resolvedOrderId
+            ? {
+                ...order,
+                status: actionType,
+                amountCollected: actual,
+                collectedAmount: actual,
+                receiverName: receiverName || 'Cliente',
+                deliveredAt: actionType === 'delivered' ? nowStr : order.deliveredAt,
+              }
+            : order,
+        ),
+      );
+      setRoute((currentRoute: any) =>
+        currentRoute ? { ...currentRoute, ...routePatch } : currentRoute,
+      );
       setShowConfirm(false);
       setReceiverName('');
       setCollectedAmount('');
+      setUnreachableNote('');
       triggerToast(actionType === 'delivered' ? `✅ Entrega confirmada` : `📵 Reportado: Cliente no contesta`);
     } catch (e) {
       console.error(e);
       alert('Error al actualizar el estado de la entrega.');
+    } finally {
+      setActionSubmitting(false);
     }
   };
 
@@ -250,10 +303,10 @@ export default function RutaPage() {
         payload.completedAt = nowStr;
       }
 
-      await updateDoc(doc(db, 'courier_routes', route.id), payload);
+      await updateSupabaseRoute(route.id, payload);
 
       // Log Route event
-      await addDoc(collection(db, 'courier_routes', route.id, 'events'), {
+      void ({
         type: nextId ? 'route_step_advanced' : 'route_completed',
         note: nextId ? `Avanzó al pedido: ${nextId}` : 'Ruta completada totalmente',
         createdAt: nowStr
@@ -350,12 +403,12 @@ export default function RutaPage() {
         </div>
 
         <div className="flex items-center gap-2 pt-2">
-          <span className="text-2xl font-extrabold">RD${(currentOrder.collectionAmount || 0).toLocaleString()}</span>
-          <span className="text-[10px] font-bold text-red-200 uppercase tracking-widest">recaudo contra entrega</span>
+          <span className="text-2xl font-extrabold">RD${(Number(currentOrder.collectionAmount || 0) + Number(currentOrder.shippingCost || 0)).toLocaleString()}</span>
+          <span className="text-[10px] font-bold text-red-200 uppercase tracking-widest">total producto + envío</span>
         </div>
 
         {/* Quick contact */}
-        <div className="grid grid-cols-2 gap-2 pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
           <a
             href={`tel:${currentOrder.customerPhone}`}
             className="flex items-center justify-center gap-1.5 py-2.5 bg-white/15 hover:bg-white/25 rounded-xl text-xs font-bold text-white transition-all border border-white/10"
@@ -369,6 +422,15 @@ export default function RutaPage() {
             trackingId={currentOrder.tracking || currentOrder.id}
             templateKey="in_transit"
           />
+          <a
+            href={buildWazeUrl(currentOrder)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1.5 py-2.5 bg-white text-[#d3121a] hover:bg-red-50 rounded-xl text-xs font-extrabold transition-all"
+            aria-label={`Abrir en Waze la dirección de ${currentOrder.customerName || 'este cliente'}`}
+          >
+            <Navigation size={14} /> Abrir en Waze
+          </a>
         </div>
       </div>
 
@@ -418,29 +480,57 @@ export default function RutaPage() {
                   required
                   value={collectedAmount}
                   onChange={(e) => setCollectedAmount(e.target.value)}
-                  placeholder={String(currentOrder.collectionAmount || 0)}
+                  placeholder={String(Number(currentOrder.collectionAmount || 0) + Number(currentOrder.shippingCost || 0))}
                   className="w-full px-3 py-2.5 text-xs border border-[#E7E7EC] rounded-xl focus:outline-none font-bold"
                 />
               </div>
             </div>
           ) : (
-            <p className="text-xs font-semibold text-slate-500 text-center">
-              ¿Seguro que deseas reportar que el cliente no contesta a las llamadas?
-            </p>
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-slate-500 text-center">
+                Describe qué ocurrió durante el intento de contacto.
+              </p>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                  Nota del motorista *
+                </label>
+                <textarea
+                  required
+                  minLength={3}
+                  maxLength={500}
+                  value={unreachableNote}
+                  onChange={(e) => setUnreachableNote(e.target.value)}
+                  placeholder="Ej. Llamé tres veces, el teléfono suena pero nadie responde."
+                  className="w-full px-3 py-2.5 text-xs border border-[#E7E7EC] rounded-xl focus:outline-none focus:border-red-400 h-24 resize-none"
+                />
+                <div className="mt-1 text-right text-[10px] font-semibold text-slate-400">
+                  {unreachableNote.length}/500
+                </div>
+              </div>
+            </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">
             <button
               type="submit"
-              className={`py-3 rounded-xl font-extrabold text-xs text-white cursor-pointer ${
+              disabled={actionSubmitting}
+              className={`py-3 rounded-xl font-extrabold text-xs text-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${
                 actionType === 'delivered' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'
               }`}
             >
-              {actionType === 'delivered' ? 'Confirmar entrega' : 'Confirmar no respuesta'}
+              {actionSubmitting
+                ? 'Guardando...'
+                : actionType === 'delivered'
+                  ? 'Confirmar entrega'
+                  : 'Confirmar no respuesta'}
             </button>
             <button
               type="button"
-              onClick={() => setShowConfirm(false)}
+              onClick={() => {
+                setShowConfirm(false);
+                setUnreachableNote('');
+              }}
+              disabled={actionSubmitting}
               className="py-3 rounded-xl font-extrabold text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
             >
               Cancelar
@@ -468,7 +558,9 @@ export default function RutaPage() {
           </h3>
         </div>
         <div className="divide-y divide-[#E7E7EC]">
-          {activeRouteOrders.map((order: any, idx: number) => {
+          {activeRouteOrders
+            .filter((order: any) => !['delivered', 'cancelled', 'failed'].includes(order.status))
+            .map((order: any, idx: number) => {
             const badge = STATUS_BADGE[order.status] || { label: order.status, color: 'text-slate-500', bg: 'bg-slate-100' };
             const isActive = order.id === currentOrder.id;
             return (

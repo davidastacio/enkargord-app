@@ -4,12 +4,16 @@ import { useState, useEffect } from 'react';
 import { 
   Search, 
   Trash2, 
-  Copy
+  Copy,
+  FileDown,
+  Printer,
+  CheckSquare
 } from 'lucide-react';
 import Link from 'next/link';
-import { collection, query, where, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { deleteSupabaseOrder, subscribeSupabaseOrders } from '@/lib/supabase/orders';
+import { downloadOrdersPdf } from '@/lib/orders/pdf-client';
+import { logisticsRegion } from '@/lib/logistics/regions';
 
 interface OrderRow {
   trackingId: string;
@@ -21,50 +25,52 @@ interface OrderRow {
   amount: number;
   courierName: string;
   date: string;
+  provinceName: string;
+  region: string;
 }
 
 export default function StoreOrdersList() {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [retryCounter, setRetryCounter] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [dateFilter, setDateFilter] = useState('');
+  const [provinceFilter, setProvinceFilter] = useState('Todas');
+  const [isDownloading, setIsDownloading] = useState(false);
 
-  // Load from Firestore in real-time
+  // Load from Supabase Realtime
   useEffect(() => {
     if (profile?.uid) {
       setLoading(true);
       setFetchError(null);
       const storeId = profile.storeId || profile.uid;
       
-      const q = query(
-        collection(db, 'orders'), 
-        where('storeId', '==', storeId)
-      );
-
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const firestoreOrders = snapshot.docs.map((docSnap) => {
-          const o = docSnap.data();
+      const unsubscribe = subscribeSupabaseOrders({ storeId }, (supabaseOrders) => {
+        const ordersForStore = supabaseOrders.map((o) => {
           return {
-            trackingId: o.tracking || o.id,
-            customerName: o.customerName || 'Cliente',
-            customerPhone: o.customerPhone || 'N/A',
+            trackingId: String(o.tracking || o.id),
+            customerName: String(o.customerName || 'Cliente'),
+            customerPhone: String(o.customerPhone || 'N/A'),
             address: o.formattedAddress || o.street || 'Sin dirección',
-            packageType: o.packageType || 'Paquete',
+            packageType: String(o.packageType || 'Paquete'),
             status: o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
-            amount: (o.collectionAmount || 0) + (o.shippingCost || 0),
-            courierName: o.courierName || 'No asignado',
+            amount: Number(o.collectionAmount || 0) + Number(o.shippingCost || 0),
+            courierName: String(o.courierName || 'No asignado'),
             date: o.createdAt ? o.createdAt.split('T')[0] : 'Hoy',
+            provinceName: String(o.provinceName || 'Sin provincia'),
+            region: logisticsRegion(String(o.provinceName || '')),
             rawCreatedAt: o.createdAt || ''
           };
         });
         
         // Client-side desc sort to avoid Firestore index builds requirement constraints
-        firestoreOrders.sort((a, b) => b.rawCreatedAt.localeCompare(a.rawCreatedAt));
+        ordersForStore.sort((a, b) => b.rawCreatedAt.localeCompare(a.rawCreatedAt));
         
-        setOrders(firestoreOrders as OrderRow[]);
+        setOrders(ordersForStore as unknown as OrderRow[]);
         setLoading(false);
       }, (error) => {
         console.error("Error listening to store orders:", error);
@@ -83,8 +89,8 @@ export default function StoreOrdersList() {
   const handleCancelOrder = async (id: string) => {
     if (confirm(`¿Estás seguro de que deseas cancelar la orden #${id}?`)) {
       try {
-        // 1. Delete from Firestore database
-        await deleteDoc(doc(db, 'orders', id));
+        // 1. Delete from Supabase
+        await deleteSupabaseOrder(id);
 
         // 2. Sync localStorage cache
         const local = localStorage.getItem('enkargord_orders');
@@ -118,8 +124,28 @@ export default function StoreOrdersList() {
 
     const matchStatus = statusFilter === 'Todos' || o.status === statusFilter;
 
-    return matchSearch && matchStatus;
+    const matchDate = !dateFilter || o.date === dateFilter;
+    const matchProvince = provinceFilter === 'Todas' || o.provinceName === provinceFilter;
+    return matchSearch && matchStatus && matchDate && matchProvince;
   });
+
+  const selectedForDownload = selectedIds.size
+    ? filtered.filter((order) => selectedIds.has(order.trackingId))
+    : filtered;
+  const provinces = Array.from(new Set(orders.map((order) => order.provinceName))).sort();
+
+  const handlePdf = async (mode: 'orders' | 'labels', ids = selectedForDownload.map((order) => order.trackingId)) => {
+    if (!user || !ids.length || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      await downloadOrdersPdf(user, ids, mode);
+    } catch (error) {
+      console.error(error);
+      alert('No se pudo generar el PDF.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -161,6 +187,44 @@ export default function StoreOrdersList() {
           </select>
         </div>
 
+        <input
+          type="date"
+          value={dateFilter}
+          onChange={(event) => setDateFilter(event.target.value)}
+          className="bg-slate-50 border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold"
+        />
+        <select
+          value={provinceFilter}
+          onChange={(event) => setProvinceFilter(event.target.value)}
+          className="min-w-[170px] bg-slate-50 border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold"
+        >
+          <option value="Todas">Todas las provincias</option>
+          {provinces.map((province) => <option key={province} value={province}>{province}</option>)}
+        </select>
+        <button
+          type="button"
+          onClick={() => setSelectedIds(new Set(filtered.map((order) => order.trackingId)))}
+          className="inline-flex items-center gap-2 border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-bold text-slate-600"
+        >
+          <CheckSquare size={14} /> Seleccionar visibles
+        </button>
+        <button
+          type="button"
+          disabled={isDownloading || selectedForDownload.length === 0}
+          onClick={() => void handlePdf('orders')}
+          className="inline-flex items-center gap-2 bg-slate-900 text-white rounded-xl px-4 py-2.5 text-xs font-bold disabled:opacity-40"
+        >
+          <FileDown size={14} /> PDF ({selectedForDownload.length})
+        </button>
+        <button
+          type="button"
+          disabled={isDownloading || selectedForDownload.length === 0}
+          onClick={() => void handlePdf('labels')}
+          className="inline-flex items-center gap-2 bg-[#d3121a] text-white rounded-xl px-4 py-2.5 text-xs font-bold disabled:opacity-40"
+        >
+          <Printer size={14} /> Labels ({selectedForDownload.length})
+        </button>
+
       </section>
 
       {/* Table grid */}
@@ -169,6 +233,7 @@ export default function StoreOrdersList() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-[#E7E7EC] text-[10px] font-extrabold text-[#64748b] tracking-wider uppercase">
+                <th className="py-4 px-4">Sel.</th>
                 <th className="py-4 px-6">Tracking</th>
                 <th className="py-4 px-6">Cliente</th>
                 <th className="py-4 px-6">Teléfono</th>
@@ -184,7 +249,7 @@ export default function StoreOrdersList() {
             <tbody className="divide-y divide-[#E7E7EC] text-xs">
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400 font-semibold">
+                  <td colSpan={11} className="py-12 text-center text-slate-400 font-semibold">
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
                       Cargando tus pedidos...
@@ -193,7 +258,7 @@ export default function StoreOrdersList() {
                 </tr>
               ) : fetchError ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-500 font-semibold space-y-3">
+                  <td colSpan={11} className="py-12 text-center text-slate-500 font-semibold space-y-3">
                     <p>{fetchError}</p>
                     <button 
                       onClick={() => setRetryCounter(prev => prev + 1)} 
@@ -205,19 +270,32 @@ export default function StoreOrdersList() {
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400 font-semibold">
+                  <td colSpan={11} className="py-12 text-center text-slate-400 font-semibold">
                     Aún no tienes pedidos registrados.
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400 font-semibold">
+                  <td colSpan={11} className="py-12 text-center text-slate-400 font-semibold">
                     No se encontraron guías coincidentes.
                   </td>
                 </tr>
               ) : (
                 filtered.map((o) => (
                   <tr key={o.trackingId} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-4 px-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(o.trackingId)}
+                        onChange={() => setSelectedIds((previous) => {
+                          const next = new Set(previous);
+                          if (next.has(o.trackingId)) next.delete(o.trackingId);
+                          else next.add(o.trackingId);
+                          return next;
+                        })}
+                        aria-label={`Seleccionar ${o.trackingId}`}
+                      />
+                    </td>
                     <td className="py-4 px-6 font-bold text-slate-900">
                       <Link href={`/tienda/pedidos/${o.trackingId}`} className="hover:underline">
                         #{o.trackingId}
@@ -245,6 +323,13 @@ export default function StoreOrdersList() {
                     <td className="py-4 px-6 text-slate-500 font-medium">{o.date}</td>
                     
                     <td className="py-4 px-6 text-right space-x-1.5">
+                      <button
+                        onClick={() => void handlePdf('labels', [o.trackingId])}
+                        className="p-2 border border-blue-200 rounded-xl bg-blue-50 text-blue-700 inline-flex"
+                        title="Descargar label PDF"
+                      >
+                        <Printer size={12} />
+                      </button>
                       <button 
                         onClick={() => handleDuplicateOrder(o)}
                         className="p-2 border border-[#E7E7EC] rounded-xl hover:bg-slate-50 text-slate-500 inline-flex items-center gap-1.5 text-[10px] font-bold"

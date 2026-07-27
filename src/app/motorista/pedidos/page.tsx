@@ -17,10 +17,10 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { DEFAULT_ORDERS, type CourierOrder, type OrderStatus, buildWhatsAppUrl, DEFAULT_WHATSAPP_TEMPLATES } from '@/data/courier';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { subscribeSupabaseOrders } from '@/lib/supabase/orders';
 import WhatsAppContactButton from '@/components/WhatsAppContactButton';
+import { downloadOrdersPdf } from '@/lib/orders/pdf-client';
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: string }> = {
   assigned:          { label: 'Asignado',            color: 'text-slate-700',   bg: 'bg-slate-100' },
@@ -36,47 +36,74 @@ const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: str
   settled:           { label: 'Liquidado',            color: 'text-emerald-700', bg: 'bg-emerald-50' },
 };
 
+const escapeHtml = (value: unknown) =>
+  String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
+  })[character] || character);
+
 function printLabel(order: CourierOrder) {
   const win = window.open('', '_blank', 'width=400,height=600');
   if (!win) return;
+  const storeName = escapeHtml(order.storeName || 'Tienda');
+  const productAmount = Number(order.financials.orderCollectionAmount || 0);
+  const shippingAmount = Number(order.financials.shippingCost || 0);
+  const totalToCollect = productAmount + shippingAmount;
   win.document.write(`
     <!DOCTYPE html>
-    <html><head><title>Label ${order.trackingId}</title>
+    <html><head><title>Etiqueta ${escapeHtml(order.trackingId)}</title>
     <style>
-      body { font-family: Arial, sans-serif; margin: 0; padding: 16px; font-size: 11px; }
-      .header { text-align: center; border-bottom: 2px solid #d3121a; padding-bottom: 8px; margin-bottom: 8px; }
-      .brand { color: #d3121a; font-size: 18px; font-weight: 900; }
-      .tracking { font-size: 20px; font-weight: 900; letter-spacing: 2px; text-align: center; margin: 8px 0; background: #f1f5f9; padding: 6px; border-radius: 6px; }
-      .row { display: flex; justify-content: space-between; margin: 3px 0; }
-      .label { color: #64748b; font-weight: 600; }
-      .value { font-weight: 700; }
-      .section { border-top: 1px solid #e2e8f0; margin-top: 8px; padding-top: 8px; }
-      .amount { font-size: 16px; font-weight: 900; color: #d3121a; text-align: center; margin: 8px 0; }
-      .footer { font-size: 9px; text-align: center; color: #94a3b8; margin-top: 12px; }
-      @media print { body { margin: 0; } }
+      @page { size: 4in 6in; margin: 0; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, sans-serif; margin: 0; color: #111827; }
+      .sheet { width: 4in; height: 6in; border: 1.5px solid #111827; padding: 0; overflow: hidden; }
+      .header { background: #111827; color: white; padding: 15px 16px 12px; }
+      .brand { font-size: 21px; font-weight: 900; line-height: 1.1; }
+      .eyebrow { margin-top: 4px; color: #cbd5e1; font-size: 8px; font-weight: 800; letter-spacing: 1.4px; }
+      .content { padding: 13px 16px; }
+      .caption { color: #64748b; font-size: 8px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; }
+      .tracking { font-size: 22px; font-weight: 900; letter-spacing: 1px; margin: 4px 0 10px; padding-bottom: 10px; border-bottom: 1px solid #cbd5e1; }
+      .recipient { font-size: 17px; font-weight: 900; margin-top: 4px; }
+      .phone { font-size: 12px; font-weight: 800; margin-top: 3px; }
+      .block { margin-top: 12px; }
+      .value { margin-top: 3px; font-size: 11px; font-weight: 700; line-height: 1.35; }
+      .reference { font-size: 10px; margin-top: 6px; color: #475569; }
+      .summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; padding: 11px; background: #f1f5f9; border-radius: 7px; }
+      .summary-value { font-size: 14px; font-weight: 900; margin-top: 4px; }
+      .amount { color: #d3121a; font-size: 18px; }
+      .footer { display: flex; justify-content: space-between; font-size: 8px; color: #64748b; margin-top: 13px; }
+      @media print { body { margin: 0; } .sheet { border-color: #111827; } }
     </style></head><body>
-    <div class="header">
-      <div class="brand">EnkargoRD</div>
-      <div style="font-size:9px; color:#64748b;">Sistema de Entregas · enkargord.com</div>
-    </div>
-    <div class="tracking">${order.trackingId}</div>
-    <div class="section">
-      <div class="row"><span class="label">Cliente:</span><span class="value">${order.customer.name}</span></div>
-      <div class="row"><span class="label">Teléfono:</span><span class="value">${order.customer.phone}</span></div>
-    </div>
-    <div class="section">
-      <div class="row"><span class="label">Provincia:</span><span class="value">${order.deliveryAddress.provinceName}</span></div>
-      <div class="row"><span class="label">Municipio:</span><span class="value">${order.deliveryAddress.municipalityName ?? '-'}</span></div>
-      <div class="row"><span class="label">Sector:</span><span class="value">${order.deliveryAddress.sectorName ?? '-'}</span></div>
-      <div class="row"><span class="label">Dirección:</span><span class="value">${order.deliveryAddress.fullAddress}</span></div>
-      ${order.deliveryAddress.reference ? `<div class="row"><span class="label">Referencia:</span><span class="value">${order.deliveryAddress.reference}</span></div>` : ''}
-    </div>
-    <div class="section">
-      <div class="row"><span class="label">Tienda:</span><span class="value">${order.storeName}</span></div>
-      <div class="row"><span class="label">Fulfillment:</span><span class="value">${order.fulfillment.required ? 'Sí' : 'No'}</span></div>
-    </div>
-    <div class="amount">RD$${order.financials.orderCollectionAmount.toLocaleString()}</div>
-    <div class="footer">Generado por EnkargoRD · No incluye datos de productos</div>
+    <main class="sheet">
+      <header class="header">
+        <div class="brand">${storeName}</div>
+        <div class="eyebrow">ETIQUETA DE ENVÍO</div>
+      </header>
+      <div class="content">
+        <div class="caption">Guía</div>
+        <div class="tracking">${escapeHtml(order.trackingId)}</div>
+        <div class="caption">Entregar a</div>
+        <div class="recipient">${escapeHtml(order.customer.name)}</div>
+        <div class="phone">${escapeHtml(order.customer.phone)}</div>
+        <div class="block">
+          <div class="caption">Destino</div>
+          <div class="value">${escapeHtml([order.deliveryAddress.sectorName, order.deliveryAddress.municipalityName, order.deliveryAddress.provinceName].filter(Boolean).join(', '))}</div>
+        </div>
+        <div class="block">
+          <div class="caption">Dirección</div>
+          <div class="value">${escapeHtml(order.deliveryAddress.fullAddress)}</div>
+          ${order.deliveryAddress.reference ? `<div class="reference"><strong>Referencia:</strong> ${escapeHtml(order.deliveryAddress.reference)}</div>` : ''}
+        </div>
+        <div class="summary">
+          <div><div class="caption">Paquete</div><div class="summary-value">${order.fulfillment.required ? 'Fulfillment' : 'Paquete'}</div></div>
+          <div>
+            <div class="caption">Total a cobrar</div>
+            <div class="summary-value amount">RD$${totalToCollect.toLocaleString()}</div>
+            <div style="font-size:7px;color:#64748b;margin-top:2px;">Producto ${productAmount.toLocaleString()} + envío ${shippingAmount.toLocaleString()}</div>
+          </div>
+        </div>
+        <div class="footer"><span>${escapeHtml(new Date(order.createdAt).toLocaleDateString('es-DO'))}</span><span>Gestionado por EnkargoRD</span></div>
+      </div>
+    </main>
     </body></html>
   `);
   win.document.close();
@@ -84,24 +111,22 @@ function printLabel(order: CourierOrder) {
 }
 
 export default function PedidosPage() {
-  const { profile } = useAuth() as any;
+  const { profile, user } = useAuth() as any;
   const [orders, setOrders] = useState<CourierOrder[]>([]);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all'>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [templateKey, setTemplateKey] = useState(0);
 
-  // Load from Firestore in real-time matching courierId
+  // Load from Supabase Realtime matching courierId
   useEffect(() => {
     if (profile?.courierId) {
-      const q = query(collection(db, 'orders'), where('courierId', '==', profile.courierId));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const firestoreOrders = snapshot.docs.map((docSnap) => {
-          const o = docSnap.data();
+      const unsubscribe = subscribeSupabaseOrders({ courierId: profile.courierId }, (supabaseOrders) => {
+        const firestoreOrders = supabaseOrders.map((o: any) => {
           const mappedStatus = o.status === 'customer_unreachable' ? 'no_answer' : o.status;
           return {
-            id: o.id || docSnap.id,
-            trackingId: o.tracking || docSnap.id,
+            id: o.id,
+            trackingId: o.tracking || o.id,
             status: mappedStatus as OrderStatus,
             storeId: o.storeId || 'STORE_01',
             storeName: o.storeName || 'Tienda Enkargo',
@@ -133,6 +158,7 @@ export default function PedidosPage() {
             },
             financials: {
               orderCollectionAmount: o.collectionAmount || 0,
+              shippingCost: o.shippingCost || 0,
               courierCommission: 100, // Comisión simulada
               storeProductAmount: o.collectionAmount || 0,
             }
@@ -174,6 +200,16 @@ export default function PedidosPage() {
     toPrint.forEach((o) => printLabel(o));
   };
 
+  const downloadLabelPdf = async (orderIds: string[]) => {
+    if (!user || !orderIds.length) return;
+    try {
+      await downloadOrdersPdf(user, orderIds, 'labels');
+    } catch (error) {
+      console.error(error);
+      alert('No se pudo generar el PDF de etiquetas.');
+    }
+  };
+
   return (
     <div className="space-y-5 max-w-2xl mx-auto lg:max-w-full">
       <div className="flex items-center justify-between">
@@ -182,13 +218,14 @@ export default function PedidosPage() {
           <p className="text-sm text-slate-400 mt-0.5">{myOrders.length} pedidos en tu lista hoy</p>
         </div>
         {selectedIds.size > 0 && (
-          <button
-            onClick={printSelected}
-            className="flex items-center gap-2 bg-[#d3121a] text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md shadow-red-100 hover:bg-[#b00f14] transition-all"
-          >
-            <Printer size={14} />
-            Imprimir {selectedIds.size} label{selectedIds.size > 1 ? 's' : ''}
-          </button>
+          <div className="flex gap-2">
+            <button onClick={printSelected} className="flex items-center gap-2 bg-slate-900 text-white text-xs font-bold px-3 py-2.5 rounded-xl">
+              <Printer size={14} /> Imprimir
+            </button>
+            <button onClick={() => void downloadLabelPdf(Array.from(selectedIds))} className="flex items-center gap-2 bg-[#d3121a] text-white text-xs font-bold px-3 py-2.5 rounded-xl">
+              <Download size={14} /> PDF
+            </button>
+          </div>
         )}
       </div>
 
@@ -272,7 +309,10 @@ export default function PedidosPage() {
               {/* Financial & Fulfillment badges */}
               <div className="flex flex-wrap items-center gap-2 mb-4">
                 <span className="text-xs font-extrabold bg-[#fee2e2] text-[#d3121a] px-2.5 py-1 rounded-full">
-                  RD${order.financials.orderCollectionAmount.toLocaleString()}
+                  RD${(
+                    Number(order.financials.orderCollectionAmount || 0)
+                    + Number(order.financials.shippingCost || 0)
+                  ).toLocaleString()}
                 </span>
                 {order.fulfillment.required && (
                   <span className="text-[10px] font-bold bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full">
@@ -285,7 +325,7 @@ export default function PedidosPage() {
               </div>
 
               {/* Action Buttons */}
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 <a
                   href={`tel:${order.customer.phone}`}
                   className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-50 hover:bg-slate-100 border border-[#E7E7EC] rounded-xl text-xs font-bold text-slate-700 transition-all"
@@ -304,6 +344,12 @@ export default function PedidosPage() {
                   className="flex items-center justify-center gap-1.5 py-2.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl text-xs font-bold text-blue-700 transition-all"
                 >
                   <Printer size={13} /> Label
+                </button>
+                <button
+                  onClick={() => void downloadLabelPdf([order.id])}
+                  className="flex items-center justify-center gap-1.5 py-2.5 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl text-xs font-bold text-red-700 transition-all"
+                >
+                  <Download size={13} /> PDF
                 </button>
               </div>
 

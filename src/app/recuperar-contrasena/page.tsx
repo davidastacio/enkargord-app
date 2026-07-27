@@ -9,16 +9,20 @@ import AuthHeader from '@/components/auth/AuthHeader';
 import AuthVisual from '@/components/auth/AuthVisual';
 import LoadingButton from '@/components/auth/LoadingButton';
 import FormError from '@/components/auth/FormError';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '@/lib/firebase/client';
 
 export default function RecoverPasswordPage() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSent, setIsSent] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setEmailError(null);
+    setSubmitError(null);
 
     if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) {
       setEmailError("Ingrese una dirección de correo electrónico válida.");
@@ -27,11 +31,24 @@ export default function RecoverPasswordPage() {
 
     setIsLoading(true);
 
-    // Simulate password recovery dispatch API
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      await sendPasswordResetEmail(auth, email.trim().toLowerCase());
       setIsSent(true);
-    }, 1500);
+    } catch (error: unknown) {
+      const code =
+        typeof error === 'object' && error && 'code' in error
+          ? String(error.code)
+          : '';
+      if (code === 'auth/invalid-email') {
+        setEmailError('Ingrese una dirección de correo electrónico válida.');
+      } else if (code === 'auth/too-many-requests') {
+        setSubmitError('Se hicieron demasiados intentos. Espera unos minutos e inténtalo nuevamente.');
+      } else {
+        setSubmitError('No pudimos enviar el enlace. Verifica tu conexión e inténtalo nuevamente.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -76,9 +93,9 @@ export default function RecoverPasswordPage() {
             ) : (
               <>
                 <div className="text-center space-y-2">
-                  <div className="relative w-28 h-10 mx-auto">
+                  <div className="relative mx-auto h-10 w-48">
                     <Image 
-                      src="/logo.png" 
+                      src="/logo-horizontal.png" 
                       alt="EnkargoRD Logo" 
                       fill 
                       className="object-contain"
@@ -94,6 +111,7 @@ export default function RecoverPasswordPage() {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
+                  {submitError && <FormError message={submitError} />}
                   <div className="space-y-1.5 w-full">
                     <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
                       Correo electrónico

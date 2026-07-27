@@ -7,7 +7,6 @@ import { useRouter } from 'next/navigation';
 import { Mail, User, Phone, CheckSquare } from 'lucide-react';
 
 import { useAuth } from '@/hooks/useAuth';
-import { db } from '@/lib/firebase/client';
 
 import AuthHeader from '@/components/auth/AuthHeader';
 import AuthVisual from '@/components/auth/AuthVisual';
@@ -18,13 +17,13 @@ import FormError from '@/components/auth/FormError';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { registerUser } = useAuth();
+  const { registerUser, loginWithGoogle } = useAuth();
   
   // Form states
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<'Cliente' | 'Tienda'>('Cliente');
+  const [role, setRole] = useState<'Tienda' | 'Motorista'>('Tienda');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -32,7 +31,6 @@ export default function RegisterPage() {
   // Loading, success & error states
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [isVerificationSent, setIsVerificationSent] = useState(false);
 
   // Field validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -99,8 +97,11 @@ export default function RegisterPage() {
     try {
       const cleanedPhone = phone.replace(/\D/g, '');
       // Create user in Firebase Auth & Firestore
-      await registerUser(email, password, name, cleanedPhone, role);
-      setIsVerificationSent(true);
+      const userProfile = await registerUser(email, password, name, cleanedPhone, role);
+      if (userProfile.role === 'Admin') router.push('/admin');
+      else if (userProfile.role === 'Motorista') router.push('/motorista');
+      else router.push('/tienda');
+      router.refresh();
     } catch (error: any) {
       console.error('Registration error:', error);
       let errMsg = 'Ocurrió un error al registrar la cuenta. Por favor, inténtelo de nuevo.';
@@ -118,6 +119,24 @@ export default function RegisterPage() {
   };
 
   const strength = getPasswordStrength();
+
+  const handleGoogleRegistration = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      const userProfile = await loginWithGoogle(role);
+      if (userProfile.role === 'Admin') router.push('/admin');
+      else if (userProfile.role === 'Motorista') router.push('/motorista');
+      else router.push('/tienda');
+      router.refresh();
+    } catch (error) {
+      console.error('Google registration error:', error);
+      setErrorMsg('No se pudo completar el registro con Google.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#F8F9FB] flex flex-col pt-20 font-sans">
@@ -138,7 +157,7 @@ export default function RegisterPage() {
         <div className="lg:col-span-5 flex justify-center">
           <div className="bg-white border border-[#E7E7EC] rounded-[18px] p-8 w-full max-w-md shadow-sm space-y-6">
             
-            {isVerificationSent ? (
+            {false ? (
               // Verification sent mockup page
               <div className="text-center space-y-6 py-6 animate-scale-up">
                 <div className="w-16 h-16 bg-[#fee2e2] text-[#d3121a] rounded-full flex items-center justify-center mx-auto text-3xl">
@@ -163,9 +182,9 @@ export default function RegisterPage() {
               // Standard registration form
               <>
                 <div className="text-center space-y-2">
-                  <div className="relative w-28 h-10 mx-auto">
+                  <div className="relative mx-auto h-10 w-48">
                     <Image 
-                      src="/logo.png" 
+                      src="/logo-horizontal.png" 
                       alt="EnkargoRD Logo" 
                       fill 
                       className="object-contain"
@@ -178,13 +197,6 @@ export default function RegisterPage() {
                   <p className="text-xs text-slate-400 font-semibold">
                     Completa tus datos para crear tu cuenta.
                   </p>
-                </div>
-
-                {/* DIAGNÓSTICO EN VIVO TEMPORAL */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[10px] font-mono text-slate-600 space-y-1">
-                  <div>🌍 Entorno: production</div>
-                  <div>🆔 Proyecto Firebase: {db?.app?.options?.projectId || 'No definido'}</div>
-                  <div>🔥 Firestore Inicializado: {db ? 'SÍ (Activo)' : 'NO (Error)'}</div>
                 </div>
 
                 <FormError message={errorMsg} />
@@ -263,11 +275,11 @@ export default function RegisterPage() {
                     </label>
                     <select
                       value={role}
-                      onChange={(e) => setRole(e.target.value as any)}
+                      onChange={(e) => setRole(e.target.value as 'Tienda' | 'Motorista')}
                       className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-3 text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
                     >
-                      <option value="Cliente">Cliente</option>
-                      <option value="Tienda">Tienda / Negocio</option>
+                      <option value="Tienda">Negocio / Tienda</option>
+                      <option value="Motorista">Motorista</option>
                     </select>
                   </div>
 
@@ -347,7 +359,7 @@ export default function RegisterPage() {
                 {/* Social Google */}
                 <SocialLoginButton 
                   text="Continuar con Google"
-                  onClick={() => alert("Simulación: Creación de cuenta con Google...")}
+                  onClick={() => void handleGoogleRegistration()}
                 />
 
                 {/* Return to Login */}

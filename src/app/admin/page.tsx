@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { 
   Package, 
   Truck, 
@@ -12,7 +13,6 @@ import {
   MapPin, 
   Users, 
   Settings, 
-  LogOut, 
   Navigation, 
   X,
   Phone,
@@ -21,14 +21,40 @@ import {
   Building,
   Map,
   Shield,
-  Wrench
+  Wrench,
+  Menu,
+  FileDown,
+  Printer,
+  Play,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import MapComponent from '@/components/MapComponent';
-import { collection, query, onSnapshot, doc, setDoc, updateDoc, deleteDoc, addDoc, increment } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
 import AuthenticatedUserMenu from '@/components/auth/AuthenticatedUserMenu';
+import {
+  addSupabaseOrderEvent,
+  createSupabaseOrder,
+  deleteSupabaseOrder,
+  subscribeSupabaseOrders,
+  updateSupabaseOrder,
+} from '@/lib/supabase/orders';
+import {
+  adjustCourierOrderCount,
+  createFleetCourier,
+  deactivateCourier,
+  listCouriers,
+  subscribeCouriers,
+} from '@/lib/supabase/couriers';
+import { listSupabaseStoreNames } from '@/lib/supabase/stores';
+import LogoutButton from '@/components/auth/LogoutButton';
+import { downloadOrdersPdf } from '@/lib/orders/pdf-client';
+import { logisticsRegion, routeLabel, type LogisticsRegion } from '@/lib/logistics/regions';
+import StoreSettlementPanel from '@/components/admin/StoreSettlementPanel';
+import { MUNICIPAL_DISTRICTS, MUNICIPALITIES, PROVINCES, SECTORS } from '@/data/territory';
+import {
+  subscribeSupabaseCourierLocations,
+  type CourierLocation,
+} from '@/lib/supabase/tracking';
 
 // TypeScript Types
 interface Financials {
@@ -37,7 +63,7 @@ interface Financials {
   fulfillmentCost: number;
   totalCollected: number;
   storeOwnerAmount: number;
-  polancoCommission: number;
+  creatorCommission: number;
   transportadoraCommission: number;
 }
 
@@ -62,6 +88,8 @@ interface Order {
       lng: number;
     };
   };
+  provinceName?: string;
+  municipalityName?: string;
   fulfillment: boolean;
   financials: Financials;
 }
@@ -76,6 +104,7 @@ interface Courier {
   status: 'Disponible' | 'En ruta' | 'Offline' | string;
   active?: boolean;
   operationalType?: string;
+  activeOrderCount?: number;
 }
 
 // Initial Data Constants
@@ -98,7 +127,7 @@ const DEFAULT_ORDERS: Order[] = [
       fulfillmentCost: 40,
       totalCollected: 2090,
       storeOwnerAmount: 1800,
-      polancoCommission: 50,
+      creatorCommission: 50,
       transportadoraCommission: 200
     }
   },
@@ -120,7 +149,7 @@ const DEFAULT_ORDERS: Order[] = [
       fulfillmentCost: 0,
       totalCollected: 3800,
       storeOwnerAmount: 3500,
-      polancoCommission: 50,
+      creatorCommission: 50,
       transportadoraCommission: 250
     }
   },
@@ -142,7 +171,7 @@ const DEFAULT_ORDERS: Order[] = [
       fulfillmentCost: 40,
       totalCollected: 1440,
       storeOwnerAmount: 1200,
-      polancoCommission: 50,
+      creatorCommission: 50,
       transportadoraCommission: 150
     }
   },
@@ -164,7 +193,7 @@ const DEFAULT_ORDERS: Order[] = [
       fulfillmentCost: 0,
       totalCollected: 2450,
       storeOwnerAmount: 2200,
-      polancoCommission: 50,
+      creatorCommission: 50,
       transportadoraCommission: 200
     }
   }
@@ -177,10 +206,13 @@ const DEFAULT_COURIERS: Courier[] = [
 ];
 
 export default function AdminDashboard() {
-  const { profile } = useAuth();
+  const router = useRouter();
+  const { profile, user } = useAuth();
+  const migrationTriggeredRef = useRef(false);
   // Navigation State
   const [activeTab, setActiveTab] = useState<'dispatch' | 'fleet' | 'settlement'>('dispatch');
   const [activeSidebarMenu, setActiveSidebarMenu] = useState<'dashboard' | 'fleet' | 'settlement' | 'config'>('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Shared Data States
   const [orders, setOrders] = useState<Order[]>([]);
@@ -189,13 +221,38 @@ export default function AdminDashboard() {
   
   // Modals States
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isRegionalAction, setIsRegionalAction] = useState(false);
+
+  useEffect(() => {
+    if (!user || profile?.role !== 'Admin' || migrationTriggeredRef.current) return;
+    migrationTriggeredRef.current = true;
+
+    void user.getIdToken().then(async (token) => {
+      const response = await fetch('/api/admin/migrate-firestore', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        console.error('Error migrating Firestore data to Supabase:', result);
+      }
+    }).catch((error) => {
+      console.error('Error preparing Firestore migration:', error);
+    });
+  }, [profile?.role, user]);
 
   // Form Inputs - Direct Order Form
   const [formCustName, setFormCustName] = useState('');
+  const [formStoreName, setFormStoreName] = useState('');
   const [formCustPhone, setFormCustPhone] = useState('');
   const [formCustAddress, setFormCustAddress] = useState('');
-  const [formCustCity, setFormCustCity] = useState('Naco (Santo Domingo)');
+  const [formProvinceId, setFormProvinceId] = useState('PROV_DN');
+  const [formMunicipalityId, setFormMunicipalityId] = useState('MUN_DN_01');
+  const [formMunicipalDistrictId, setFormMunicipalDistrictId] = useState('');
+  const [formCustCity, setFormCustCity] = useState('Naco');
+  const [courierLocations, setCourierLocations] = useState<CourierLocation[]>([]);
   const [formProdCost, setFormProdCost] = useState('1500');
   const [formShipCost, setFormShipCost] = useState('200');
 
@@ -208,31 +265,19 @@ export default function AdminDashboard() {
 
   // Hydrate states from Firestore & localstorage on Client Side mount
   useEffect(() => {
-    // 0. Subscribe to Users/Stores to resolve names
-    const qus = query(collection(db, 'users'));
-    const unsubscribeUsers = onSnapshot(qus, (snapshot) => {
-      const mapping: Record<string, string> = {};
-      snapshot.docs.forEach((docSnap) => {
-        const u = docSnap.data();
-        const sName = u.storeName || u.displayName || u.name || 'Tienda';
-        mapping[docSnap.id] = sName;
-        if (u.storeId) {
-          mapping[u.storeId] = sName;
-        }
-      });
-      setStoresMap(mapping);
-    }, (error) => {
-      console.error("Error reading users in Admin dashboard:", error);
-    });
-    // 1. Subscribe to Firestore orders in real-time
-    const q = query(collection(db, 'orders'));
-    const unsubscribeOrders = onSnapshot(q, (snapshot) => {
-      const firestoreOrders = snapshot.docs.map((docSnap) => {
-        const o = docSnap.data();
-        const storeNameReal = o.storeId ? (storesMap[o.storeId] || 'Tienda Registrada') : 'Tienda Registrada';
+    // 0. Resolve store names from Supabase
+    void listSupabaseStoreNames()
+      .then(setStoresMap)
+      .catch((error) => console.error("Error reading stores in Admin dashboard:", error));
+    const unsubscribeUsers = () => {};
+    // 1. Subscribe to Supabase orders in real-time
+    const unsubscribeOrders = subscribeSupabaseOrders({}, (supabaseOrders) => {
+      const ordersFromSupabase = supabaseOrders.map((rawOrder) => {
+        const o = rawOrder as any;
+        const storeNameReal = o.storeName || (o.storeId ? (storesMap[o.storeId] || 'Tienda Registrada') : 'Tienda Registrada');
         return {
-          id: o.id || docSnap.id,
-          trackingId: o.tracking || o.trackingId || docSnap.id,
+          id: o.id,
+          trackingId: o.tracking || o.trackingId || o.id,
           status: o.status || 'pending',
           storeId: o.storeId || 'STORE_01',
           storeName: storeNameReal,
@@ -251,6 +296,8 @@ export default function AdminDashboard() {
               lng: o.longitude || o.deliveryLongitude || -69.9326
             }
           },
+          provinceName: o.provinceName || '',
+          municipalityName: o.municipalityName || '',
           fulfillment: o.requiresFulfillment || false,
           financials: {
             productCost: o.collectionAmount !== undefined ? o.collectionAmount : (o.financials?.productCost || 0),
@@ -258,42 +305,50 @@ export default function AdminDashboard() {
             fulfillmentCost: 0,
             totalCollected: (o.collectionAmount || 0) + (o.shippingCost || 0),
             storeOwnerAmount: o.collectionAmount || 0,
-            polancoCommission: 50,
+            creatorCommission: 50,
             transportadoraCommission: (o.shippingCost || 0) - 50
           }
         };
       });
       
       // Client-side desc sort to avoid Firestore index builds requirement constraints
-      firestoreOrders.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      ordersFromSupabase.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       
-      setOrders(firestoreOrders as Order[]);
+      setOrders(ordersFromSupabase as Order[]);
     }, (error) => {
-      console.error("Error reading Firestore orders in Admin dashboard:", error);
+      console.error("Error reading Supabase orders in Admin dashboard:", error);
       setOrders([]);
     });
 
-    const qc = query(collection(db, 'couriers'));
-    const unsubscribeCouriers = onSnapshot(qc, (snapshot) => {
-      const firestoreCouriers = snapshot.docs.map((docSnap) => {
-        const o = docSnap.data();
+    const refreshCouriers = async () => {
+      try {
+        const records = await listCouriers();
+        const supabaseCouriers = records.map((o) => {
         return {
-          id: docSnap.id,
-          userUid: o.userUid || docSnap.id,
-          name: o.fullName || 'Motorista',
+          id: o.id,
+          userUid: o.userUid || o.id,
+          name: o.name || 'Motorista',
           phone: o.phone || '',
-          vehicle: o.vehicleType || o.vehicle?.type || 'motocicleta',
-          plate: o.vehiclePlate || o.vehicle?.plate || 'N/A',
+          vehicle: o.vehicle.type || 'motocicleta',
+          plate: o.vehicle.plate || 'N/A',
           status: o.status === 'available' ? 'Disponible' : o.status === 'on_route' ? 'En ruta' : 'Offline',
-          active: o.active !== undefined ? o.active : true,
-          operationalType: o.operationalType || 'courier',
+          active: o.active,
+          operationalType: 'courier',
+          activeOrderCount: o.activeOrderCount,
         };
       });
-      setCouriers(firestoreCouriers as any[]);
-    }, (error) => {
-      console.error("Error reading Firestore couriers in Admin dashboard:", error);
-      setCouriers([]);
-    });
+        setCouriers(supabaseCouriers as any[]);
+      } catch (error) {
+        console.error("Error reading Supabase couriers in Admin dashboard:", error);
+        setCouriers([]);
+      }
+    };
+    void refreshCouriers();
+    const unsubscribeCouriers = subscribeCouriers(() => void refreshCouriers());
+    const unsubscribeLocations = subscribeSupabaseCourierLocations(
+      setCourierLocations,
+      (error) => console.error("Error reading live courier locations:", error),
+    );
 
     // Read active tab from query parameters
     const params = new URLSearchParams(window.location.search);
@@ -313,8 +368,9 @@ export default function AdminDashboard() {
       unsubscribeUsers();
       unsubscribeOrders();
       unsubscribeCouriers();
+      unsubscribeLocations();
     };
-  }, [storesMap]);
+  }, []);
 
   // Show dynamic toast helper
   const triggerToast = (message: string) => {
@@ -328,8 +384,8 @@ export default function AdminDashboard() {
   const calculateFinancials = (prodCost: number, shipCost: number, requiresFulfillment = false) => {
     const fCost = requiresFulfillment ? 40 : 0;
     const totalCollected = prodCost + shipCost + fCost;
-    const polancoCommission = shipCost > 0 ? 50 : 0;
-    const transportadoraCommission = shipCost > 0 ? Math.max(0, shipCost - polancoCommission) : 0;
+    const creatorCommission = shipCost > 0 ? 50 : 0;
+    const transportadoraCommission = shipCost > 0 ? Math.max(0, shipCost - creatorCommission) : 0;
 
     return {
       productCost: prodCost,
@@ -337,7 +393,7 @@ export default function AdminDashboard() {
       fulfillmentCost: fCost,
       totalCollected,
       storeOwnerAmount: prodCost,
-      polancoCommission,
+      creatorCommission,
       transportadoraCommission
     };
   };
@@ -357,7 +413,7 @@ export default function AdminDashboard() {
       const isReassignment = previousCourierName && previousCourierName !== 'No asignado';
 
       // 1. Update order document in Firestore
-      await updateDoc(doc(db, 'orders', orderId), {
+      await updateSupabaseOrder(orderId, {
         courierId: courierId,
         courierUid: courierUid || courierId,
         courierName: courierName,
@@ -370,54 +426,30 @@ export default function AdminDashboard() {
 
       // 2. Increment new courier's active order count in Firestore
       if (courierId) {
-        await updateDoc(doc(db, 'couriers', courierId), {
-          currentOrderCount: increment(1),
-          status: 'on_route',
-          updatedAt: new Date().toISOString()
-        });
+        await adjustCourierOrderCount(courierId, 1, 'on_route');
       }
 
       // Decrement previous courier's active order count if reassigning
       if (isReassignment) {
         const prevCourier = couriers.find(c => c.name === previousCourierName);
         if (prevCourier?.id) {
-          await updateDoc(doc(db, 'couriers', prevCourier.id), {
-            currentOrderCount: increment(-1),
-            updatedAt: new Date().toISOString()
-          });
+          await adjustCourierOrderCount(prevCourier.id, -1);
         }
       }
 
       // 3. Create subcollection event log inside orders/{orderId}/events
-      await addDoc(collection(db, 'orders', orderId, 'events'), {
+      await addSupabaseOrderEvent(orderId, {
         type: isReassignment ? 'courier_reassigned' : 'courier_assigned',
         previousStatus: targetOrder?.status || 'pending',
         newStatus: 'assigned',
-        performedByUid: profile?.uid || 'ADMIN',
-        performedByRole: 'admin',
+        actorUid: profile?.uid || '',
+        actorRole: 'admin',
         courierId: courierId,
         courierUid: courierUid || courierId,
         courierName: courierName,
         note: isReassignment 
           ? `Reasignado de ${previousCourierName} a ${courierName}`
           : `Asignado a ${courierName}`,
-        createdAt: new Date().toISOString()
-      });
-
-      // 4. Create Audit Log
-      const auditId = `AUD-${Date.now()}`;
-      await setDoc(doc(db, 'audit_logs', auditId), {
-        id: auditId,
-        action: isReassignment ? 'reassign_order' : 'assign_order',
-        actorUid: profile?.uid || 'ADMIN',
-        actorRole: 'admin',
-        targetType: 'order',
-        targetId: orderId,
-        metadata: {
-          courierId,
-          courierName,
-          previousCourierName: isReassignment ? previousCourierName : undefined
-        },
         createdAt: new Date().toISOString()
       });
 
@@ -431,7 +463,7 @@ export default function AdminDashboard() {
   // Update in transit package status manually in control tower
   const handleUpdateStatus = async (orderId: string, newStatus: Order['status']) => {
     try {
-      await updateDoc(doc(db, 'orders', orderId), {
+      await updateSupabaseOrder(orderId, {
         status: newStatus,
         updatedAt: new Date().toISOString()
       });
@@ -477,7 +509,7 @@ export default function AdminDashboard() {
     const randomSector = sectors[Math.floor(Math.random() * sectors.length)];
 
     try {
-      await updateDoc(doc(db, 'orders', orderId), {
+      await updateSupabaseOrder(orderId, {
         formattedAddress: `${formCustAddress || 'Santo Domingo'} - ${randomSector.zone}`,
         latitude: randomSector.lat,
         longitude: randomSector.lng,
@@ -493,25 +525,34 @@ export default function AdminDashboard() {
   // Direct Order Submission Form Handler
   const handleCreateOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingOrder) return;
 
     const pCost = parseFloat(formProdCost) || 0;
     const sCost = parseFloat(formShipCost) || 0;
+    const now = new Date();
+    const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const randomValues = crypto.getRandomValues(new Uint32Array(5));
+    const hash = Array.from(randomValues, (value) => alphabet[value % alphabet.length]).join('');
+    const tracking = `ENK-${datePart}-${hash}`;
+    const provinceName = PROVINCES.find((province) => province.id === formProvinceId)?.name || '';
+    const municipalityName =
+      MUNICIPALITIES.find((municipality) => municipality.id === formMunicipalityId)?.name || '';
+    const municipalDistrictName =
+      MUNICIPAL_DISTRICTS.find((district) => district.id === formMunicipalDistrictId)?.name || null;
 
-    const nextNumber = orders.length > 0
-      ? Math.max(...orders.map(o => parseInt(o.trackingId.split('-')[1]) || 0)) + 1
-      : 1251;
-
-    const newOrder = {
-      id: `ENK-${nextNumber}`,
-      tracking: `ENK-${nextNumber}`,
+    const baseOrder = {
+      id: tracking,
+      tracking,
       status: 'pending',
-      storeId: "ADMIN_DIRECT",
-      createdByUid: "ADMIN",
+      createdByUid: profile?.uid || '',
       customerName: formCustName,
       customerPhone: formCustPhone,
-      provinceName: "Santo Domingo",
-      municipalityName: "Distrito Nacional",
-      sectorName: formCustCity.split('(')[0].trim(),
+      provinceName,
+      municipalityName,
+      municipalDistrictId: formMunicipalDistrictId || null,
+      municipalDistrictName,
+      sectorName: formCustCity.trim(),
       street: formCustAddress,
       formattedAddress: formCustAddress,
       latitude: 18.4861 + (Math.random() - 0.5) * 0.03,
@@ -530,18 +571,46 @@ export default function AdminDashboard() {
       updatedAt: new Date().toISOString()
     };
 
+    setIsSubmittingOrder(true);
     try {
-      await setDoc(doc(db, 'orders', newOrder.id), newOrder);
+      if (!user) throw new Error("UNAUTHENTICATED");
+      const storeResponse = await fetch("/api/admin/stores", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${await user.getIdToken()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          commercialName: formStoreName.trim(),
+        }),
+      });
+      const storeResult = await storeResponse.json().catch(() => null);
+      if (!storeResponse.ok || !storeResult?.store?.id) {
+        throw new Error(storeResult?.error || "EXTERNAL_STORE_CREATE_FAILED");
+      }
+      const newOrder = {
+        ...baseOrder,
+        storeId: String(storeResult.store.id),
+        storeName: String(storeResult.store.commercialName || formStoreName.trim()),
+      };
+      await createSupabaseOrder(newOrder);
 
       // Reset Inputs
+      setFormStoreName('');
       setFormCustName('');
       setFormCustPhone('');
       setFormCustAddress('');
+      setFormProvinceId('PROV_DN');
+      setFormMunicipalityId('MUN_DN_01');
+      setFormMunicipalDistrictId('');
+      setFormCustCity('Naco');
       setIsOrderModalOpen(false);
       triggerToast(`Pedido #${newOrder.tracking} creado en la bandeja de entrada.`);
     } catch (error) {
       console.error("Error creating direct order in Firestore:", error);
       alert("Error al guardar el pedido en la base de datos.");
+    } finally {
+      setIsSubmittingOrder(false);
     }
   };
 
@@ -552,17 +621,12 @@ export default function AdminDashboard() {
     const newCourierId = cFormUser || `courier_${Date.now()}`;
 
     try {
-      await setDoc(doc(db, 'couriers', newCourierId), {
+      await createFleetCourier({
         id: newCourierId,
-        userUid: cFormUser || null,
-        fullName: cFormName,
+        name: cFormName,
         phone: cFormPhone,
         vehicleType: cFormVehicle,
         vehiclePlate: cFormPlate,
-        status: 'available',
-        currentOrderCount: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
       });
 
       // Reset inputs
@@ -581,8 +645,8 @@ export default function AdminDashboard() {
   const handleDeleteCourier = async (courierId: string) => {
     if (confirm("¿Estás seguro de que deseas dar de baja a este repartidor de la flota?")) {
       try {
-        await deleteDoc(doc(db, 'couriers', courierId));
-        triggerToast("Mensajero eliminado de la flota.");
+        await deactivateCourier(courierId);
+        triggerToast("Mensajero dado de baja de la flota.");
       } catch (error) {
         console.error("Error deleting courier in Firestore:", error);
         alert("Error al eliminar el mensajero de la base de datos.");
@@ -592,6 +656,9 @@ export default function AdminDashboard() {
 
   // Final Close Cashbox action (Tab 3)
   const handleCloseCashbox = async () => {
+    triggerToast("Liquida cada tienda desde el panel de saldos para conservar el historial financiero.");
+    return;
+
     const deliveredOrders = orders.filter(o => o.status === 'delivered');
     const deliveredCount = deliveredOrders.length;
     if (deliveredCount === 0) {
@@ -602,13 +669,13 @@ export default function AdminDashboard() {
     if (confirm(`¿Proceder con el cuadre financiero de ${deliveredCount} envíos entregados hoy?`)) {
       try {
         // Clear delivered orders from database
-        const deletePromises = deliveredOrders.map(o => deleteDoc(doc(db, 'orders', o.id)));
+        const deletePromises = deliveredOrders.map(o => deleteSupabaseOrder(o.id));
         await Promise.all(deletePromises);
         
         // Sync local storage fallback
         const local = localStorage.getItem('enkargord_orders');
         if (local) {
-          const parsed = JSON.parse(local);
+          const parsed = JSON.parse(local!);
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const updatedLocal = parsed.filter((o: any) => o.status !== 'delivered');
           localStorage.setItem('enkargord_orders', JSON.stringify(updatedLocal));
@@ -649,15 +716,16 @@ export default function AdminDashboard() {
   ].filter(item => item.value > 0);
 
   // Leaflet format active couriers array mapping directly from couriers database
-  const leafletActiveCouriers = couriers
-    .filter((c: any) => c.trackingStatus === 'active' && c.lastLocation)
-    .map((c: any) => {
+  const leafletActiveCouriers = courierLocations
+    .filter((location) => location.trackingStatus === 'active')
+    .map((location) => {
+      const courier = couriers.find((record) => record.id === location.courierId);
       return {
-        name: c.name || c.fullName || 'Repartidor',
-        status: c.trackingStatus === 'active' ? 'En Vivo' : 'Offline',
-        lat: (c.lastLocation as any).latitude || 18.4795,
-        lng: (c.lastLocation as any).longitude || -69.9326,
-        pendingCount: c.currentOrderCount || 0
+        name: courier?.name || 'Repartidor',
+        status: 'En Vivo',
+        lat: location.latitude,
+        lng: location.longitude,
+        pendingCount: courier?.activeOrderCount || 0,
       };
     });
 
@@ -666,7 +734,7 @@ export default function AdminDashboard() {
   let totalProductCost = 0;
   let totalShippingCost = 0;
   let totalFulfillmentCost = 0;
-  let totalPolancoCom = 0;
+  let totalCreatorCommission = 0;
   let totalTransportadoraCom = 0;
   let totalCollectedSum = 0;
 
@@ -675,13 +743,61 @@ export default function AdminDashboard() {
     totalShippingCost += o.financials.shippingCost;
     const fCost = o.financials.fulfillmentCost || 0;
     totalFulfillmentCost += fCost;
-    totalPolancoCom += o.financials.polancoCommission;
+    totalCreatorCommission += o.financials.creatorCommission;
     totalTransportadoraCom += (o.financials.transportadoraCommission + fCost);
     totalCollectedSum += o.financials.totalCollected;
   });
 
+  const today = new Date().toISOString().slice(0, 10);
+  const regionalOrders = orders
+    .filter((order) => order.createdAt.slice(0, 10) === today && !['delivered', 'cancelled', 'returned'].includes(order.status))
+    .reduce((groups, order) => {
+      const region = logisticsRegion(order.provinceName || '');
+      (groups[region] ||= []).push(order);
+      return groups;
+    }, {} as Partial<Record<LogisticsRegion, Order[]>>);
+
+  const downloadRegionalPdf = async (region: LogisticsRegion, mode: 'orders' | 'labels') => {
+    const ids = (regionalOrders[region] || []).map((order) => order.id);
+    if (!user || !ids.length || isRegionalAction) return;
+    setIsRegionalAction(true);
+    try {
+      await downloadOrdersPdf(user, ids, mode);
+    } catch (error) {
+      console.error(error);
+      triggerToast('No se pudo generar el PDF regional.');
+    } finally {
+      setIsRegionalAction(false);
+    }
+  };
+
+  const startRegionalRoute = async (region: LogisticsRegion) => {
+    const ids = (regionalOrders[region] || []).map((order) => order.id);
+    if (!user || !ids.length || isRegionalAction) return;
+    setIsRegionalAction(true);
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/routes/start', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ region, orderIds: ids }),
+      });
+      if (!response.ok) throw new Error('REGIONAL_ROUTE_START_FAILED');
+      router.push('/motorista/ruta');
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      triggerToast('No se pudo iniciar la ruta regional.');
+    } finally {
+      setIsRegionalAction(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F8F9FB] flex font-sans text-slate-800 antialiased">
+      {sidebarOpen && (
+        <button type="button" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm lg:hidden" />
+      )}
       
       {/* Dynamic Toast popup */}
       {toastMessage && (
@@ -694,19 +810,22 @@ export default function AdminDashboard() {
       {/* ==========================================
          SIDEBAR IZQUIERDA
          ========================================== */}
-      <aside className="w-[280px] bg-white border-r border-[#E7E7EC] flex flex-col justify-between fixed top-0 bottom-0 left-0 z-40">
+      <aside className={`${sidebarOpen ? 'flex' : 'hidden'} lg:flex w-[min(280px,86vw)] lg:w-[280px] bg-white border-r border-[#E7E7EC] flex-col justify-between fixed top-0 bottom-0 left-0 z-50`}>
         <div>
           {/* Logo Brand Header */}
           <div className="p-4 border-b border-[#E7E7EC] flex items-center justify-center">
-            <div className="relative w-[270px] h-24">
+            <div className="relative h-12 w-[220px]">
               <Image 
-                src="/logo.png" 
+                src="/logo-horizontal.png" 
                 alt="EnkargoRD Logo" 
                 fill 
                 className="object-contain object-center" 
                 priority
               />
             </div>
+            <button type="button" onClick={() => setSidebarOpen(false)} className="p-2 lg:hidden" aria-label="Cerrar menú">
+              <X size={20} />
+            </button>
           </div>
 
           {/* Menus de Navegacion */}
@@ -809,46 +928,50 @@ export default function AdminDashboard() {
             </p>
           </div>
 
-          <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all">
-            <LogOut size={16} />
+          <LogoutButton className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all">
             Cerrar sesión
-          </button>
+          </LogoutButton>
         </div>
       </aside>
 
       {/* ==========================================
          MAIN CONTENT AREA
          ========================================== */}
-      <main className="flex-grow pl-[280px] min-h-screen flex flex-col">
+      <main className="flex-grow min-w-0 pl-0 lg:pl-[280px] min-h-screen flex flex-col">
         
         {/* Header Principal */}
-        <header className="bg-white border-b border-[#E7E7EC] px-8 py-5 flex items-center justify-between sticky top-0 z-30">
-          <div>
+        <header className="bg-white border-b border-[#E7E7EC] px-4 sm:px-6 lg:px-8 py-4 sm:py-5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30">
+          <div className="flex items-center gap-3 min-w-0">
+            <button type="button" onClick={() => setSidebarOpen(true)} className="p-2 border border-[#E7E7EC] rounded-xl lg:hidden" aria-label="Abrir menú">
+              <Menu size={19} />
+            </button>
+            <div className="min-w-0">
             <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
               ¡Bienvenido, Administrador (Transportadora)!
             </h1>
             <p className="text-xs text-slate-400 mt-1 font-medium">
               Panel centralizado de operaciones de EnkargoRD. Gestiona la flota, despacha y realiza cuadres.
             </p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-2 sm:gap-4 ml-auto">
             {/* User Profile widget */}
             <AuthenticatedUserMenu />
 
             {/* Quick Action Button */}
             <button
               onClick={() => setIsOrderModalOpen(true)}
-              className="bg-[#d3121a] hover:bg-[#b00f14] text-white font-bold text-xs py-3 px-5 rounded-xl shadow-md shadow-red-100 transition-all flex items-center gap-2"
+              className="bg-[#d3121a] hover:bg-[#b00f14] text-white font-bold text-xs py-2.5 sm:py-3 px-3 sm:px-5 rounded-xl shadow-md shadow-red-100 transition-all flex items-center gap-2"
             >
               <Plus size={16} />
-              Crear Pedido Directo
+              <span className="hidden sm:inline">Crear Pedido Directo</span><span className="sm:hidden">Pedido</span>
             </button>
           </div>
         </header>
 
         {/* Tab Navigation header */}
-        <div className="bg-white border-b border-[#E7E7EC] px-8 flex">
+        <div className="bg-white border-b border-[#E7E7EC] px-4 sm:px-6 lg:px-8 flex overflow-x-auto custom-scrollbar">
           <button 
             onClick={() => { setActiveTab('dispatch'); setActiveSidebarMenu('dashboard'); }} 
             className={getTabClass('dispatch')}
@@ -873,7 +996,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Outer content container */}
-        <div className="p-8 flex-grow space-y-8">
+        <div className="p-4 sm:p-6 lg:p-8 flex-grow min-w-0 space-y-8 overflow-x-hidden">
 
           {/* ==========================================
              KPI CARDS BAR
@@ -955,6 +1078,41 @@ export default function AdminDashboard() {
              ========================================== */}
           {activeTab === 'dispatch' && (
             <div className="space-y-8 animate-fade-in">
+              <section className="space-y-4">
+                <div>
+                  <h3 className="font-extrabold text-slate-900">Rutas regionales de hoy</h3>
+                  <p className="text-xs text-slate-400 mt-1">Pedidos agrupados automáticamente por provincia y corredor logístico.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {(Object.entries(regionalOrders) as [LogisticsRegion, Order[]][]).map(([region, regionOrders]) => (
+                    <article key={region} className="bg-white border border-[#E7E7EC] rounded-2xl p-5 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h4 className="font-extrabold text-slate-900">{routeLabel(region, regionOrders[0]?.provinceName)}</h4>
+                          <p className="text-xs text-slate-400 mt-1">{regionOrders.length} pedidos - {Array.from(new Set(regionOrders.map((order) => order.provinceName))).join(', ')}</p>
+                        </div>
+                        <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-extrabold text-[#d3121a]">{regionOrders.length}</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 mt-4">
+                        <button disabled={isRegionalAction} onClick={() => void downloadRegionalPdf(region, 'orders')} className="flex items-center justify-center gap-1 rounded-xl border border-slate-200 py-2.5 text-[10px] font-bold text-slate-600 disabled:opacity-40">
+                          <FileDown size={13} /> PDF
+                        </button>
+                        <button disabled={isRegionalAction} onClick={() => void downloadRegionalPdf(region, 'labels')} className="flex items-center justify-center gap-1 rounded-xl border border-blue-200 bg-blue-50 py-2.5 text-[10px] font-bold text-blue-700 disabled:opacity-40">
+                          <Printer size={13} /> Labels
+                        </button>
+                        <button disabled={isRegionalAction} onClick={() => void startRegionalRoute(region)} className="flex items-center justify-center gap-1 rounded-xl bg-[#d3121a] py-2.5 text-[10px] font-bold text-white disabled:opacity-40">
+                          <Play size={13} /> Iniciar
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                  {Object.keys(regionalOrders).length === 0 && (
+                    <div className="md:col-span-2 xl:col-span-3 bg-white border border-dashed border-slate-200 rounded-2xl p-8 text-center text-sm font-semibold text-slate-400">
+                      No hay pedidos operativos registrados hoy.
+                    </div>
+                  )}
+                </div>
+              </section>
               {/* Dispatch Inbox Block */}
               <div className="bg-white border border-[#E7E7EC] rounded-2xl overflow-hidden shadow-sm">
                 <div className="p-6 border-b border-[#E7E7EC] flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
@@ -1034,6 +1192,13 @@ export default function AdminDashboard() {
                               </select>
                             </td>
                             <td className="py-4 px-6 text-right">
+                              <button
+                                onClick={() => user && void downloadOrdersPdf(user, [order.id], 'labels')}
+                                className="mr-2 border border-blue-200 bg-blue-50 text-blue-700 font-bold text-[11px] py-2 px-3 rounded-xl"
+                                title="Descargar label PDF"
+                              >
+                                <Printer size={13} />
+                              </button>
                               <button 
                                 onClick={() => {
                                   const selectEl = document.getElementById(`courier-assign-${order.id}`) as HTMLSelectElement;
@@ -1357,6 +1522,7 @@ export default function AdminDashboard() {
              ========================================== */}
           {activeTab === 'settlement' && (
             <div className="space-y-8 animate-fade-in">
+              <StoreSettlementPanel />
               {/* Financial settlement summary block */}
               <div className="bg-white border border-[#E7E7EC] rounded-2xl p-6 shadow-sm grid grid-cols-1 md:grid-cols-5 gap-6 divide-y md:divide-y-0 md:divide-x divide-[#E7E7EC]">
                 
@@ -1398,13 +1564,13 @@ export default function AdminDashboard() {
 
                 <div className="flex flex-col justify-center md:pl-6">
                   <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
-                    Plataforma Polanco
+                    Comisión para creador
                   </span>
                   <span className="text-2xl font-extrabold text-[#d3121a] tracking-tight block mt-1">
-                    RD${totalPolancoCom.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                    RD${totalCreatorCommission.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
                   </span>
                   <span className="text-[10px] text-slate-400 mt-1 font-medium block">
-                    Tarifa plana (RD$50 x entrega)
+                    Comisión fija (RD$50 por entrega)
                   </span>
                 </div>
 
@@ -1464,7 +1630,7 @@ export default function AdminDashboard() {
                         <th className="py-4 px-6">Pago Tienda</th>
                         <th className="py-4 px-6">Costo Envío</th>
                         <th className="py-4 px-6">Fulfillment</th>
-                        <th className="py-4 px-6">Com. Polanco</th>
+                        <th className="py-4 px-6">Comisión creador</th>
                         <th className="py-4 px-6">Com. Transportadora</th>
                         <th className="py-4 px-6 text-right">Efectivo Cobrado</th>
                       </tr>
@@ -1488,7 +1654,7 @@ export default function AdminDashboard() {
                               <td className="py-4 px-6 font-semibold text-slate-600">RD${f.storeOwnerAmount}</td>
                               <td className="py-4 px-6 font-semibold text-slate-600">RD${f.shippingCost}</td>
                               <td className="py-4 px-6 font-semibold text-slate-600">RD${fulfillmentFee}</td>
-                              <td className="py-4 px-6 font-semibold text-[#d3121a]">RD${f.polancoCommission}</td>
+                              <td className="py-4 px-6 font-semibold text-[#d3121a]">RD${f.creatorCommission}</td>
                               <td className="py-4 px-6 font-semibold text-blue-600">RD${f.transportadoraCommission + fulfillmentFee}</td>
                               <td className="py-4 px-6 text-right font-extrabold text-emerald-600">RD${f.totalCollected}</td>
                             </tr>
@@ -1510,7 +1676,7 @@ export default function AdminDashboard() {
          ========================================== */}
       {isOrderModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white border border-[#E7E7EC] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-scale-up">
+          <div className="bg-white border border-[#E7E7EC] rounded-2xl w-full max-w-lg max-h-[calc(100vh-2rem)] shadow-2xl overflow-y-auto animate-scale-up">
             
             <div className="p-6 border-b border-[#E7E7EC] flex items-center justify-between bg-slate-50">
               <div>
@@ -1527,6 +1693,26 @@ export default function AdminDashboard() {
 
             <form onSubmit={handleCreateOrderSubmit} className="p-6 space-y-4">
               <div className="space-y-1">
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Nombre de la Tienda / Proveedor</label>
+                <input
+                  type="text"
+                  required
+                  list="admin-store-names"
+                  placeholder="Ej. Boutique María"
+                  value={formStoreName}
+                  onChange={(e) => setFormStoreName(e.target.value)}
+                  className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a]"
+                />
+                <datalist id="admin-store-names">
+                  {Object.values(storesMap).map((storeName) => (
+                    <option key={storeName} value={storeName} />
+                  ))}
+                </datalist>
+                <p className="text-[10px] font-medium text-slate-400">
+                  Si no existe, se creará como tienda externa administrada por EnkargoRD para sus liquidaciones.
+                </p>
+              </div>
+              <div className="space-y-1">
                 <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Nombre del Cliente</label>
                 <input 
                   type="text" 
@@ -1538,7 +1724,7 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Teléfono Cliente</label>
                   <input 
@@ -1552,17 +1738,81 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Sector / Ciudad</label>
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Provincia</label>
                   <select 
-                    value={formCustCity}
-                    onChange={(e) => setFormCustCity(e.target.value)}
+                    required
+                    value={formProvinceId}
+                    onChange={(e) => {
+                      const provinceId = e.target.value;
+                      setFormProvinceId(provinceId);
+                      setFormMunicipalityId(
+                        MUNICIPALITIES.find((municipality) => municipality.provinceId === provinceId)?.id || '',
+                      );
+                      setFormMunicipalDistrictId('');
+                      setFormCustCity('');
+                    }}
                     className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a]"
                   >
-                    <option value="Naco (Santo Domingo)">Naco (Santo Domingo)</option>
-                    <option value="Bella Vista (Santo Domingo)">Bella Vista (Santo Domingo)</option>
-                    <option value="Piantini (Santo Domingo)">Piantini (Santo Domingo)</option>
-                    <option value="Zona Colonial (Santo Domingo)">Zona Colonial (Santo Domingo)</option>
+                    {PROVINCES.map((province) => (
+                      <option key={province.id} value={province.id}>{province.name}</option>
+                    ))}
                   </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Municipio</label>
+                  <select
+                    required
+                    value={formMunicipalityId}
+                    onChange={(e) => {
+                      setFormMunicipalityId(e.target.value);
+                      setFormMunicipalDistrictId('');
+                      setFormCustCity('');
+                    }}
+                    className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a]"
+                  >
+                    {MUNICIPALITIES.filter((municipality) => municipality.provinceId === formProvinceId).map((municipality) => (
+                      <option key={municipality.id} value={municipality.id}>{municipality.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Distrito municipal</label>
+                  <select
+                    value={formMunicipalDistrictId}
+                    onChange={(e) => {
+                      setFormMunicipalDistrictId(e.target.value);
+                      setFormCustCity('');
+                    }}
+                    className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a]"
+                  >
+                    <option value="">Ninguno</option>
+                    {MUNICIPAL_DISTRICTS.filter((district) => district.municipalityId === formMunicipalityId).map((district) => (
+                      <option key={district.id} value={district.id}>{district.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Sector / Localidad</label>
+                  <input
+                    type="text"
+                    required
+                    value={formCustCity}
+                    onChange={(e) => setFormCustCity(e.target.value)}
+                    list="admin-sector-options"
+                    placeholder="Ej. Bávaro"
+                    className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a]"
+                  />
+                  <datalist id="admin-sector-options">
+                    {SECTORS.filter((sector) => (
+                      sector.municipalityId === formMunicipalityId
+                      && (!formMunicipalDistrictId || sector.municipalDistrictId === formMunicipalDistrictId)
+                    )).map((sector) => (
+                      <option key={sector.id} value={sector.name} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
 
@@ -1624,9 +1874,10 @@ export default function AdminDashboard() {
                 </button>
                 <button 
                   type="submit" 
-                  className="flex-1 bg-[#d3121a] hover:bg-[#b00f14] text-white font-extrabold text-xs py-3 rounded-xl transition-all shadow-md shadow-red-100"
+                  disabled={isSubmittingOrder}
+                  className="flex-1 bg-[#d3121a] hover:bg-[#b00f14] text-white font-extrabold text-xs py-3 rounded-xl transition-all shadow-md shadow-red-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Crear Pedido
+                  {isSubmittingOrder ? 'Creando…' : 'Crear Pedido'}
                 </button>
               </div>
             </form>

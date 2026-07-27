@@ -2,8 +2,7 @@
 
 import React from 'react';
 import { MessageCircle } from 'lucide-react';
-import { doc, addDoc, collection } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
+import { addSupabaseOrderEvent } from '@/lib/supabase/orders';
 import { useAuth } from '@/hooks/useAuth';
 
 export function normalizeDominicanPhone(phone: string): string {
@@ -70,7 +69,7 @@ export default function WhatsAppContactButton({
       const waUrl = `https://wa.me/${normalizedPhone}?text=${encodedText}`;
 
       // Log the event in Firestore
-      await addDoc(collection(db, 'orders', orderId, 'events'), {
+      await addSupabaseOrderEvent(orderId, {
         type: 'customer_whatsapp_opened',
         previousStatus: 'unknown',
         newStatus: 'unknown',

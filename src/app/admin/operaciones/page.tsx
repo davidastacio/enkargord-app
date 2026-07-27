@@ -11,7 +11,6 @@ import {
   Trash2,
   Save,
   Package2,
-  LogOut,
   CheckCircle,
   Loader2,
 } from 'lucide-react';
@@ -21,8 +20,11 @@ import {
   type SettlementBeneficiary,
   type ZoneSurcharge,
 } from '@/data/courier';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
+import {
+  getOperationSettings,
+  saveOperationSettings,
+} from '@/lib/supabase/operations';
+import LogoutButton from '@/components/auth/LogoutButton';
 
 const PACKAGING_LABELS: Record<string, string> = {
   sobre:               'Sobre',
@@ -45,20 +47,17 @@ export default function OperacionesPage() {
   });
 
   useEffect(() => {
-    async function loadPricingFromFirestore() {
+    async function loadPricingFromSupabase() {
       try {
-        const ref = doc(db, 'settings', 'pricing');
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          setPricing(snap.data() as PricingSettings);
-        }
+        const savedPricing = await getOperationSettings<PricingSettings>();
+        if (savedPricing) setPricing(savedPricing);
       } catch (err) {
-        console.error("Error loading pricing settings from Firestore:", err);
+        console.error("Error loading pricing settings from Supabase:", err);
       } finally {
         setLoading(false);
       }
     }
-    loadPricingFromFirestore();
+    void loadPricingFromSupabase();
   }, []);
 
   const triggerToast = (msg: string) => {
@@ -70,11 +69,11 @@ export default function OperacionesPage() {
     setSaving(true);
     const withDate = { ...pricing, lastUpdated: new Date().toISOString() };
     try {
-      await setDoc(doc(db, 'settings', 'pricing'), withDate);
+      await saveOperationSettings(withDate as unknown as Record<string, unknown>);
       setPricing(withDate);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-      triggerToast('⚙️ Configuración guardada correctamente en Firestore.');
+      triggerToast('⚙️ Configuración guardada correctamente en Supabase.');
     } catch (err) {
       console.error("Error saving pricing to Firestore:", err);
       triggerToast('❌ Error al guardar en la base de datos.');
@@ -132,8 +131,8 @@ export default function OperacionesPage() {
       <aside className="w-[280px] bg-white border-r border-[#E7E7EC] flex flex-col justify-between fixed top-0 bottom-0 left-0 z-40">
         <div>
           <div className="p-4 border-b border-[#E7E7EC] flex items-center justify-center">
-            <div className="relative w-[270px] h-24">
-              <Image src="/logo.png" alt="EnkargoRD" fill className="object-contain object-center" priority />
+            <div className="relative h-12 w-[220px]">
+              <Image src="/logo-horizontal.png" alt="EnkargoRD" fill className="object-contain object-center" priority />
             </div>
           </div>
           <nav className="p-4 space-y-1">
@@ -149,9 +148,9 @@ export default function OperacionesPage() {
           </nav>
         </div>
         <div className="p-4 border-t border-[#E7E7EC]">
-          <Link href="/" className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all">
-            <LogOut size={16} /> Salir de Admin
-          </Link>
+          <LogoutButton className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all">
+            Salir de Admin
+          </LogoutButton>
         </div>
       </aside>
 
@@ -164,7 +163,7 @@ export default function OperacionesPage() {
               <Settings size={20} className="text-[#d3121a]" /> Configuración de Tarifas y Operación
             </h1>
             <p className="text-xs text-slate-400 mt-1 font-medium">
-              Ajusta costos de envío, empaques y comisiones directamente en Firestore.
+              Ajusta costos de envío, empaques y comisiones directamente en Supabase.
             </p>
           </div>
           <button

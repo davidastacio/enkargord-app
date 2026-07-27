@@ -28,10 +28,8 @@ import {
   buildWhatsAppUrl,
   DEFAULT_WHATSAPP_TEMPLATES,
 } from '@/data/courier';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { useCourierTracking } from '@/hooks/useCourierTracking';
+import { subscribeSupabaseOrders } from '@/lib/supabase/orders';
 import WhatsAppContactButton from '@/components/WhatsAppContactButton';
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
@@ -53,17 +51,15 @@ export default function MotoristaHome() {
   const [orders, setOrders] = useState<CourierOrder[]>([]);
   const [routeActive, setRouteActive] = useState(false);
 
-  // Load from Firestore in real-time matching courierId
+  // Load from Supabase Realtime matching courierId
   useEffect(() => {
     if (profile?.courierId) {
-      const q = query(collection(db, 'orders'), where('courierId', '==', profile.courierId));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const firestoreOrders = snapshot.docs.map((docSnap) => {
-          const o = docSnap.data();
+      const unsubscribe = subscribeSupabaseOrders({ courierId: profile.courierId }, (supabaseOrders) => {
+        const firestoreOrders = supabaseOrders.map((o: any) => {
           const mappedStatus = o.status === 'customer_unreachable' ? 'no_answer' : o.status;
           return {
-            id: o.id || docSnap.id,
-            trackingId: o.tracking || docSnap.id,
+            id: o.id,
+            trackingId: o.tracking || o.id,
             status: mappedStatus as OrderStatus,
             storeId: o.storeId || 'STORE_01',
             storeName: o.storeName || 'Tienda Enkargo',
@@ -89,7 +85,7 @@ export default function MotoristaHome() {
                 lng: o.longitude || -69.9326
               }
             },
-            amountCollected: o.collectionAmount || 0,
+            amountCollected: Number(o.amountCollected ?? o.collectedAmount ?? 0),
             fulfillment: {
               required: o.requiresFulfillment || false
             },
@@ -102,7 +98,7 @@ export default function MotoristaHome() {
         });
         setOrders(firestoreOrders as any);
       }, (error) => {
-        console.error("Error loading courier orders from Firestore:", error);
+        console.error("Error loading courier orders from Supabase:", error);
       });
 
       const routeState = localStorage.getItem('enkargord_route_active');
@@ -120,26 +116,10 @@ export default function MotoristaHome() {
     }
   }, [profile]);
 
-  const {
-    trackingStatus,
-    lastLocation,
-    errorMsg,
-    startTracking,
-    pauseTracking,
-    resumeTracking,
-    stopTracking
-  } = useCourierTracking();
-
-  const toggleRoute = async () => {
+  const toggleRoute = () => {
     const next = !routeActive;
     setRouteActive(next);
     localStorage.setItem('enkargord_route_active', String(next));
-
-    if (next) {
-      await startTracking();
-    } else {
-      await stopTracking();
-    }
   };
 
   // KPI calculations
@@ -234,55 +214,6 @@ export default function MotoristaHome() {
           )}
         </button>
       </div>
-
-      {/* ── Tracking Controls ─────────────────── */}
-      {routeActive && (
-        <div className="bg-white border border-[#E7E7EC] rounded-2xl p-4 shadow-sm flex items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
-            <span className={`w-2.5 h-2.5 rounded-full ${
-              trackingStatus === 'active' ? 'bg-emerald-500 animate-pulse' :
-              trackingStatus === 'paused' ? 'bg-amber-500' : 'bg-slate-400'
-            }`} />
-            <div>
-              <span className="font-bold text-slate-800">
-                {trackingStatus === 'active' ? 'Ubicación en vivo transmitiendo' :
-                 trackingStatus === 'paused' ? 'Seguimiento pausado' : 'Seguimiento inactivo'}
-              </span>
-              {lastLocation && (
-                <span className="text-[10px] text-slate-400 block mt-0.5">
-                  Precisión: {Math.round(lastLocation.accuracy)}m · Act. {new Date(lastLocation.updatedAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            {trackingStatus === 'active' ? (
-              <button
-                onClick={pauseTracking}
-                className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg font-bold"
-              >
-                Pausar GPS
-              </button>
-            ) : trackingStatus === 'paused' ? (
-              <button
-                onClick={resumeTracking}
-                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg font-bold"
-              >
-                Reanudar GPS
-              </button>
-            ) : null}
-          </div>
-        </div>
-      )}
-
-      {/* GPS Error Alert */}
-      {errorMsg && (
-        <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-2xl text-xs font-bold flex items-center gap-2">
-          <AlertCircle size={16} className="text-red-500 flex-shrink-0" />
-          <span>{errorMsg}</span>
-        </div>
-      )}
 
       {/* ── Progress Bar ────────────────────── */}
       {routeActive && (

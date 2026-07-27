@@ -15,23 +15,30 @@ import {
   ChevronUp,
   Download,
 } from 'lucide-react';
-import { DEFAULT_ORDERS, DEFAULT_PRICING, type CourierOrder, type Liquidation, type LiquidationEntry } from '@/data/courier';
+import { type Liquidation, type LiquidationEntry } from '@/data/courier';
+import { useAuth } from '@/hooks/useAuth';
+import { useCourierOrders } from '@/hooks/useCourierOrders';
+import { listCourierSettlements } from '@/lib/supabase/settlements';
 
 type LiqStatus = 'idle' | 'submitted' | 'approved' | 'paid';
 
 export default function LiquidacionPage() {
-  const [orders, setOrders] = useState<CourierOrder[]>([]);
+  const { user } = useAuth();
+  const { orders, courierId } = useCourierOrders();
   const [liquidations, setLiquidations] = useState<Liquidation[]>([]);
   const [currentStatus, setCurrentStatus] = useState<LiqStatus>('idle');
   const [expandedLiq, setExpandedLiq] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem('enkargord_courier_orders');
-    setOrders(stored ? JSON.parse(stored) : DEFAULT_ORDERS);
-    const storedLiq = localStorage.getItem('enkargord_liquidations');
-    if (storedLiq) setLiquidations(JSON.parse(storedLiq));
-  }, []);
+    if (!courierId) return;
+    void listCourierSettlements(courierId)
+      .then((items) => {
+        setLiquidations(items);
+        if (items.some((item) => item.status === 'submitted')) setCurrentStatus('submitted');
+      })
+      .catch((error) => console.error('Error loading settlements:', error));
+  }, [courierId]);
 
   const triggerToast = (msg: string) => {
     setToast(msg);
@@ -40,7 +47,8 @@ export default function LiquidacionPage() {
 
   // Orders ready to be liquidated (delivered, not yet settled)
   const pendingOrders = orders.filter(
-    (o) => o.courierId === 'COU-001' && o.status === 'delivered'
+    (o) => o.courierId === courierId && o.status === 'delivered' &&
+      !['submitted', 'approved', 'paid', 'settled'].includes(String((o as any).settlementStatus || 'pending'))
   );
 
   // Financial aggregates for pending liquidation
@@ -49,7 +57,6 @@ export default function LiquidacionPage() {
   const totalCommission  = pendingOrders.reduce((s, o) => s + o.financials.courierCommission, 0);
   const totalBeneficiary = pendingOrders.reduce((s, o) => s + o.financials.transportCompanyAmount, 0);
   const totalFulfillment = pendingOrders.reduce((s, o) => s + o.financials.fulfillmentCost, 0);
-  const totalCashToDeliver = totalCollected - totalCommission;
 
   const buildEntries = (): LiquidationEntry[] =>
     pendingOrders.map((o) => ({
@@ -65,42 +72,28 @@ export default function LiquidacionPage() {
       deliveredAt: o.deliveredAt ?? new Date().toISOString(),
     }));
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (pendingOrders.length === 0) {
       triggerToast('No hay entregas pendientes de liquidar.');
       return;
     }
 
-    const newLiq: Liquidation = {
-      id: `LIQ-${Date.now()}`,
-      courierId: 'COU-001',
-      courierName: 'Carlos Martínez',
-      status: 'submitted',
-      submittedAt: new Date().toISOString(),
-      entries: buildEntries(),
-      totalCollected,
-      totalForStores,
-      totalCourierCommission: totalCommission,
-      totalBeneficiaryAmounts: totalBeneficiary,
-      totalForCompany: totalBeneficiary + totalFulfillment,
-      totalCashToDeliver,
-    };
-
-    const updatedLiqs = [newLiq, ...liquidations];
-    setLiquidations(updatedLiqs);
-    localStorage.setItem('enkargord_liquidations', JSON.stringify(updatedLiqs));
-
-    // Mark orders as settled
-    const updatedOrders = orders.map((o) =>
-      o.courierId === 'COU-001' && o.status === 'delivered'
-        ? { ...o, status: 'settled' as const }
-        : o
-    );
-    setOrders(updatedOrders);
-    localStorage.setItem('enkargord_courier_orders', JSON.stringify(updatedOrders));
-
-    setCurrentStatus('submitted');
-    triggerToast('✅ Solicitud de liquidación enviada correctamente.');
+    try {
+      const token = await user?.getIdToken();
+      if (!token) throw new Error('UNAUTHENTICATED');
+      const response = await fetch('/api/courier/settlements', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderIds: pendingOrders.map((order) => order.id) }),
+      });
+      if (!response.ok) throw new Error('SETTLEMENT_CREATE_FAILED');
+      setLiquidations(await listCourierSettlements(courierId));
+      setCurrentStatus('submitted');
+      triggerToast('✅ Solicitud de liquidación enviada correctamente.');
+    } catch (error) {
+      console.error(error);
+      triggerToast('No se pudo enviar la liquidación.');
+    }
   };
 
   const printReceipt = (liq: Liquidation) => {
@@ -128,7 +121,7 @@ export default function LiquidacionPage() {
       </table>
       <p>Total cobrado: <strong>RD$${liq.totalCollected.toLocaleString()}</strong></p>
       <p>Mi comisión: <strong>RD$${liq.totalCourierCommission.toLocaleString()}</strong></p>
-      <p class="total">A entregar: RD$${liq.totalCashToDeliver.toLocaleString()}</p>
+      <p class="total">Para tiendas: RD$${liq.totalForStores.toLocaleString()}</p>
       <div class="footer">Generado por EnkargoRD</div>
       </body></html>
     `);
@@ -187,13 +180,6 @@ export default function LiquidacionPage() {
             </div>
           );
         })}
-        <div className="bg-[#fee2e2] border border-red-200 rounded-2xl p-4 shadow-sm col-span-2 flex items-center justify-between">
-          <div>
-            <div className="text-[10px] font-bold text-red-400 uppercase tracking-widest">Efectivo a entregar a empresa</div>
-            <div className="text-2xl font-extrabold text-[#d3121a] mt-1">RD${totalCashToDeliver.toLocaleString()}</div>
-          </div>
-          <DollarSign size={28} className="text-[#d3121a] opacity-30" />
-        </div>
       </div>
 
       {/* Order Detail Table */}
@@ -288,9 +274,9 @@ export default function LiquidacionPage() {
                         <div className="text-violet-400 font-semibold mb-1">Mi comisión</div>
                         <div className="font-extrabold text-violet-700">RD${liq.totalCourierCommission.toLocaleString()}</div>
                       </div>
-                      <div className="bg-[#fee2e2] rounded-xl p-3 col-span-2">
-                        <div className="text-red-400 font-semibold mb-1">Efectivo entregado</div>
-                        <div className="font-extrabold text-[#d3121a] text-lg">RD${liq.totalCashToDeliver.toLocaleString()}</div>
+                      <div className="bg-blue-50 rounded-xl p-3 col-span-2">
+                        <div className="text-blue-400 font-semibold mb-1">Para las tiendas</div>
+                        <div className="font-extrabold text-blue-700 text-lg">RD${liq.totalForStores.toLocaleString()}</div>
                       </div>
                     </div>
                     <button

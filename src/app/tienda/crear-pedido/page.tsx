@@ -20,9 +20,10 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import DeliveryLocationMap from '@/components/DeliveryLocationMap';
-import { collection, doc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { createSupabaseOrder } from '@/lib/supabase/orders';
+import { getOperationSettings } from '@/lib/supabase/operations';
+import { DEFAULT_PRICING, type PricingSettings } from '@/data/courier';
 import {
   PROVINCES,
   MUNICIPALITIES,
@@ -112,7 +113,25 @@ export default function CreateOrder() {
   const [pendingDragCoords, setPendingDragCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [dragAddressDetails, setDragAddressDetails] = useState<any>(null);
 
-  const shippingFee = 200;
+  const [shippingFee, setShippingFee] = useState(DEFAULT_PRICING.baseShippingCost);
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+    let active = true;
+    void getOperationSettings<PricingSettings>()
+      .then((settings) => {
+        const configuredFee = parseFloat(String(settings?.baseShippingCost ?? ''));
+        if (active && Number.isFinite(configuredFee) && configuredFee >= 0) {
+          setShippingFee(configuredFee);
+        }
+      })
+      .catch((error) => {
+        console.error('Error loading the current shipping fee:', error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [profile?.uid]);
 
   // Filtered dropdowns
   const availableMunicipalities = MUNICIPALITIES.filter(m => m.provinceId === selectedProvId);
@@ -483,14 +502,14 @@ export default function CreateOrder() {
       console.log(`[Diagnostic] flowId=${flowId} etapa=order-payload-created elapsed=${(performance.now() - t0).toFixed(0)}ms`);
       console.log(`[Diagnostic] flowId=${flowId} etapa=tracking-created tracking=${newOrder.tracking} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
 
-      // 1. Save to Cloud Firestore
-      console.log(`[Diagnostic] flowId=${flowId} etapa=firestore-write-start storeId=${newOrder.storeId} createdByUid=${newOrder.createdByUid} tracking=${newOrder.tracking} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+      // 1. Save to Supabase
+      console.log(`[Diagnostic] flowId=${flowId} etapa=supabase-write-start storeId=${newOrder.storeId} createdByUid=${newOrder.createdByUid} tracking=${newOrder.tracking} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
 
       try {
-        await setDoc(doc(db, 'orders', newOrder.id), newOrder);
-        console.log(`[Diagnostic] flowId=${flowId} etapa=firestore-write-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+        await createSupabaseOrder(newOrder);
+        console.log(`[Diagnostic] flowId=${flowId} etapa=supabase-write-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
       } catch (writeErr: any) {
-        console.error(`[Diagnostic] flowId=${flowId} etapa=firestore-write-failed error=${writeErr?.code || 'unknown'} msg=${writeErr?.message} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+        console.error(`[Diagnostic] flowId=${flowId} etapa=supabase-write-failed error=${writeErr?.code || 'unknown'} msg=${writeErr?.message} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
         throw writeErr;
       }
 
@@ -508,7 +527,7 @@ export default function CreateOrder() {
       
       console.log(`[Diagnostic] flowId=${flowId} etapa=redirect-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
     } catch (err: any) {
-      console.error("Error creating order in Firestore:", err);
+      console.error("Error creating order in Supabase:", err);
       alert("Error al registrar el pedido en la base de datos: " + (err.message || err));
     } finally {
       setIsLoading(false);
@@ -1057,7 +1076,7 @@ export default function CreateOrder() {
               </label>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Monto total a recaudar (RD$)</label>
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Valor del producto (RD$)</label>
                 <div className="relative">
                   <DollarSign size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input 
@@ -1300,7 +1319,7 @@ export default function CreateOrder() {
               </div>
 
               <div className="flex justify-between">
-                <span>Monto a Recaudar:</span>
+                <span>Valor del producto:</span>
                 <span className="text-slate-950 font-bold">RD${(requiresCod ? parseFloat(collectAmount) || 0 : 0).toLocaleString()}</span>
               </div>
 
@@ -1315,8 +1334,12 @@ export default function CreateOrder() {
               </div>
 
               <div className="flex justify-between border-t border-slate-100 pt-3 text-sm font-extrabold text-slate-950">
-                <span>Tarifa Estimada:</span>
+                <span>Tarifa de envío:</span>
                 <span className="text-[#d3121a]">RD${shippingFee.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between rounded-xl bg-emerald-50 px-3 py-3 text-sm font-extrabold text-emerald-800">
+                <span>Total a recaudar al cliente:</span>
+                <span>RD${((requiresCod ? parseFloat(collectAmount) || 0 : 0) + shippingFee).toLocaleString()}</span>
               </div>
 
             </div>

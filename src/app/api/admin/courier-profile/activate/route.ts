@@ -1,224 +1,127 @@
-import { NextResponse } from 'next/server';
-import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin';
+import { NextResponse } from "next/server";
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+import { getAdminAuth } from "@/lib/firebase/admin";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+function bearerToken(request: Request): string | null {
+  const authorization = request.headers.get("authorization");
+  return authorization?.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length)
+    : null;
+}
 
 export async function POST(request: Request) {
-  const flowId = `ACT-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-  const t0 = performance.now();
-  console.log(`[Diagnostic] flowId=${flowId} etapa=activation-start timestamp=${new Date().toISOString()}`);
-
-  // Create a timeout controller to interrupt operations taking > 10 seconds
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
-
   try {
-    // 1. Initialise Admin services on-demand inside try block
-    let adminAuth;
-    let adminDb;
-    try {
-      adminAuth = getAdminAuth();
-      adminDb = getAdminDb();
-    } catch (initErr: any) {
-      clearTimeout(timeoutId);
-      console.error(`[Diagnostic] flowId=${flowId} etapa=endpoint-error elapsed=${(performance.now() - t0).toFixed(0)}ms error=SERVER_INIT_ERROR msg=${initErr?.message}`);
+    const token = bearerToken(request);
+    if (!token) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'SERVER_CONFIGURATION_ERROR',
-          message: 'Firebase Admin no está configurado correctamente en Vercel.'
-        },
-        { status: 500 }
+        { success: false, error: "UNAUTHORIZED", message: "No autenticado." },
+        { status: 401 },
       );
     }
 
-    console.log(`[Diagnostic] flowId=${flowId} etapa=session-verify-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+    const decodedToken = await getAdminAuth().verifyIdToken(token);
+    const supabase = getSupabaseAdminClient();
+    const { data: profile, error: profileError } = await supabase
+      .from("user_profiles")
+      .select("firebase_uid, organization_id, name, email, phone, role")
+      .eq("firebase_uid", decodedToken.uid)
+      .maybeSingle();
 
-    // 2. Parse Bearer Token
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      clearTimeout(timeoutId);
-      console.error(`[Diagnostic] flowId=${flowId} etapa=endpoint-error error=UNAUTHORIZED msg=Missing authorization header`);
+    if (profileError) throw profileError;
+    if (!profile) {
       return NextResponse.json(
         {
           success: false,
-          error: 'UNAUTHORIZED',
-          message: 'No autenticado. Falta token de sesión.'
+          error: "USER_NOT_FOUND",
+          message: "Perfil de administrador no encontrado en Supabase.",
         },
-        { status: 401 }
+        { status: 404 },
       );
     }
 
-    const idToken = authHeader.split('Bearer ')[1];
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(idToken);
-      const partialUid = decodedToken.uid ? `${decodedToken.uid.slice(0, 5)}...` : 'N/A';
-      console.log(`[Diagnostic] flowId=${flowId} etapa=session-verify-success uid=${partialUid} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-    } catch (authErr: any) {
-      clearTimeout(timeoutId);
-      console.error(`[Diagnostic] flowId=${flowId} etapa=endpoint-error error=TOKEN_VERIFICATION_FAILED msg=${authErr?.message}`);
+    if (profile.role !== "Admin") {
       return NextResponse.json(
         {
           success: false,
-          error: 'TOKEN_VERIFICATION_FAILED',
-          message: 'Sesión inválida o expirada.'
+          error: "FORBIDDEN",
+          message: "Se requiere rol de administrador.",
         },
-        { status: 401 }
+        { status: 403 },
       );
     }
 
-    const uid = decodedToken.uid;
-    console.log(`[Diagnostic] flowId=${flowId} etapa=admin-user-read-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-
-    // 3. Get user role from users collection
-    const userDocRef = adminDb.collection('users').doc(uid);
-    const userSnap = await userDocRef.get();
-
-    if (!userSnap.exists) {
-      clearTimeout(timeoutId);
-      console.warn(`[Diagnostic] flowId=${flowId} etapa=admin-user-read-failed error=USER_NOT_FOUND elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'USER_NOT_FOUND',
-          message: 'Perfil de usuario no encontrado en la base de datos.'
-        },
-        { status: 404 }
-      );
-    }
-
-    const userData = userSnap.data();
-    const userRole = userData?.role;
-    const isAdmin = userRole === 'admin' || userRole === 'Admin' || userRole === 'Administrador';
-
-    console.log(`[Diagnostic] flowId=${flowId} etapa=admin-user-read-success role=${userRole} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-
-    if (!isAdmin) {
-      clearTimeout(timeoutId);
-      console.warn(`[Diagnostic] flowId=${flowId} etapa=admin-user-read-failed error=FORBIDDEN elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'FORBIDDEN',
-          message: 'Acceso denegado. Se requiere rol de administrador.'
-        },
-        { status: 403 }
-      );
-    }
-
-    console.log(`[Diagnostic] flowId=${flowId} etapa=courier-query-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-
-    // 4. Check existing profile
-    const courierDocRef = adminDb.collection('couriers').doc(uid);
-    const courierSnap = await courierDocRef.get();
-
-    if (courierSnap.exists) {
-      clearTimeout(timeoutId);
-      const existingData = courierSnap.data();
-      console.log(`[Diagnostic] flowId=${flowId} etapa=courier-query-success exists=true elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-      
-      // Ensure users document is synced just in case
-      if (!userData?.courierId || !userData?.courierModeEnabled) {
-        await userDocRef.update({
-          courierId: uid,
-          courierModeEnabled: true,
-          updatedAt: new Date().toISOString(),
-        });
-      }
-
-      console.log(`[Diagnostic] flowId=${flowId} etapa=activation-completed elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-      return NextResponse.json({
-        success: true,
-        alreadyExisted: true,
-        courierId: uid,
-        courier: {
-          id: uid,
-          userUid: uid,
-          status: existingData?.status || 'available',
-          active: existingData?.active !== undefined ? existingData.active : true,
-        }
-      });
-    }
-
-    console.log(`[Diagnostic] flowId=${flowId} etapa=courier-create-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-
-    // 5. Create new operative profile safely
-    const nowIso = new Date().toISOString();
-    const adminFullName = userData?.fullName || userData?.name || decodedToken.name || 'Administrador';
-    const adminEmail = userData?.email || decodedToken.email || '';
-    const adminPhone = userData?.phone || '';
-
-    const newCourierProfile = {
-      id: uid,
-      userUid: uid,
-      userRole: 'admin',
-      operationalType: 'admin_courier',
-      fullName: adminFullName,
-      email: adminEmail,
-      phone: adminPhone,
-      status: 'available',
+    const now = new Date().toISOString();
+    const courier = {
+      id: decodedToken.uid,
+      organization_id: profile.organization_id,
+      user_uid: decodedToken.uid,
+      full_name: profile.name || decodedToken.name || "Administrador",
+      email: profile.email || decodedToken.email || "",
+      phone: profile.phone || "",
+      operational_type: "admin_courier",
+      status: "available",
       active: true,
-      currentOrderCount: 0,
-      completedOrderCount: 0,
-      createdByUid: uid,
-      createdAt: nowIso,
-      updatedAt: nowIso,
+      updated_at: now,
     };
 
-    await courierDocRef.set(newCourierProfile);
-    console.log(`[Diagnostic] flowId=${flowId} etapa=courier-create-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+    const { data: existingCourier, error: existingError } = await supabase
+      .from("couriers")
+      .select("id")
+      .eq("id", decodedToken.uid)
+      .maybeSingle();
 
-    console.log(`[Diagnostic] flowId=${flowId} etapa=user-update-start elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+    if (existingError) throw existingError;
 
-    // 6. Update user document
-    await userDocRef.update({
-      courierId: uid,
-      courierModeEnabled: true,
-      updatedAt: nowIso,
+    const { error: courierError } = await supabase
+      .from("couriers")
+      .upsert(courier, { onConflict: "id" });
+    if (courierError) throw courierError;
+
+    const { error: userError } = await supabase
+      .from("user_profiles")
+      .update({
+        courier_id: decodedToken.uid,
+        courier_mode_enabled: true,
+        updated_at: now,
+      })
+      .eq("firebase_uid", decodedToken.uid);
+    if (userError) throw userError;
+
+    const { error: auditError } = await supabase.from("audit_logs").insert({
+      id: `AUD-${Date.now()}`,
+      organization_id: profile.organization_id,
+      action: "activate_admin_courier_profile",
+      actor_uid: decodedToken.uid,
+      actor_role: "admin",
+      target_type: "courier_profile",
+      target_id: decodedToken.uid,
+      metadata: { email: courier.email, fullName: courier.full_name },
+      created_at: now,
     });
-    console.log(`[Diagnostic] flowId=${flowId} etapa=user-update-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-
-    // 7. Audit log
-    const auditId = `AUD-${Date.now()}`;
-    await adminDb.collection('audit_logs').doc(auditId).set({
-      id: auditId,
-      action: 'activate_admin_courier_profile',
-      actorUid: uid,
-      actorRole: 'admin',
-      targetType: 'courier_profile',
-      targetId: uid,
-      metadata: { fullName: adminFullName, email: adminEmail },
-      createdAt: nowIso,
-    });
-
-    clearTimeout(timeoutId);
-    console.log(`[Diagnostic] flowId=${flowId} etapa=activation-completed elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+    if (auditError) throw auditError;
 
     return NextResponse.json({
       success: true,
-      alreadyExisted: false,
-      courierId: uid,
+      alreadyExisted: Boolean(existingCourier),
+      courierId: decodedToken.uid,
       courier: {
-        id: uid,
-        userUid: uid,
-        status: 'available',
-        active: true,
-      }
-    });
-
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-    console.error(`[Diagnostic] flowId=${flowId} etapa=endpoint-error elapsed=${(performance.now() - t0).toFixed(0)}ms error=INTERNAL_ERROR msg=${error?.message}`);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'INTERNAL_ERROR',
-        message: error instanceof Error ? error.message : 'No se pudo activar el perfil operativo.'
+        id: decodedToken.uid,
+        userUid: decodedToken.uid,
+        status: courier.status,
+        active: courier.active,
       },
-      { status: 500 }
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "No se pudo activar el perfil.";
+    console.error("[Courier activation]", message);
+    return NextResponse.json(
+      { success: false, error: "INTERNAL_ERROR", message },
+      { status: 500 },
     );
   }
 }

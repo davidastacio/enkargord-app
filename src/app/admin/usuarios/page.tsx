@@ -9,7 +9,6 @@ import {
   DollarSign,
   Users,
   Settings,
-  LogOut,
   Search,
   Download,
   Plus,
@@ -24,41 +23,22 @@ import {
   ShieldOff,
   ShieldCheck,
 } from 'lucide-react';
-import {
-  collection,
-  query,
-  onSnapshot,
-  doc,
-  updateDoc,
-  orderBy,
-  serverTimestamp,
-  Timestamp,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import LogoutButton from '@/components/auth/LogoutButton';
+import {
+  listAdminUserProfiles,
+  subscribeAdminUserProfiles,
+  type AdminUserProfile,
+} from '@/lib/supabase/profiles';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface FirestoreUser {
-  id: string;
-  name?: string;
-  displayName?: string;
-  email?: string;
-  phone?: string;
-  role?: string;
-  status?: string;
-  createdAt?: Timestamp | string;
-  lastLoginAt?: Timestamp | string;
-  storeId?: string;
-  storeName?: string;
-  courierId?: string;
-  disabled?: boolean;
-}
+type FirestoreUser = AdminUserProfile;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const formatDate = (val?: Timestamp | string | null): string => {
+const formatDate = (val?: string | null): string => {
   if (!val) return '—';
   try {
-    const d = val instanceof Timestamp ? val.toDate() : new Date(val as string);
+    const d = new Date(val);
     return d.toLocaleDateString('es-DO', { year: 'numeric', month: 'short', day: '2-digit' });
   } catch {
     return '—';
@@ -105,7 +85,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function RegisteredUsers() {
-  const { user: authUser } = useAuth() as any;
+  const { user: authUser, impersonateUser } = useAuth() as any;
 
   // Data state
   const [users, setUsers] = useState<FirestoreUser[]>([]);
@@ -117,7 +97,7 @@ export default function RegisteredUsers() {
   const [activeActionMenuId, setActiveActionMenuId] = useState<string | null>(null);
   const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
-    type: 'suspend' | 'delete' | 'activate' | 'deactivate';
+    type: 'suspend' | 'delete' | 'activate' | 'deactivate' | 'promote_admin';
     userId: string;
     userName: string;
   } | null>(null);
@@ -138,26 +118,24 @@ export default function RegisteredUsers() {
     setLoading(true);
     setError(null);
 
-    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const list: FirestoreUser[] = snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-        }));
-        setUsers(list);
-        setLoading(false);
-      },
-      (err) => {
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const list = await listAdminUserProfiles();
+        if (!disposed) setUsers(list);
+      } catch (err) {
         console.error('Error loading users:', err);
-        setError('No se pudo cargar la lista de usuarios. Revisa tu conexión o permisos.');
-        setLoading(false);
+        if (!disposed) setError('No se pudo cargar la lista de usuarios. Revisa tu conexión o permisos.');
+      } finally {
+        if (!disposed) setLoading(false);
       }
-    );
-
-    return unsubscribe;
+    };
+    void refresh();
+    const unsubscribe = subscribeAdminUserProfiles(() => void refresh());
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -178,16 +156,31 @@ export default function RegisteredUsers() {
     const { type, userId, userName } = confirmAction;
 
     try {
-      const userRef = doc(db, 'users', userId);
+      const status =
+        type === 'suspend' ? 'suspended' :
+        type === 'activate' ? 'active' :
+        type === 'deactivate' ? 'inactive' : null;
+      const role = type === 'promote_admin' ? 'Admin' : null;
+      if (!status && !role) return;
+      const token = await authUser?.getIdToken();
+      if (!token) throw new Error('UNAUTHENTICATED');
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(status ? { status } : {}),
+          ...(role ? { role } : {}),
+        }),
+      });
+      if (!response.ok) throw new Error('USER_STATUS_UPDATE_FAILED');
 
-      if (type === 'suspend') {
-        await updateDoc(userRef, { status: 'suspended', updatedAt: serverTimestamp() });
+      if (type === 'promote_admin') {
+        triggerToast(`${userName} ahora tiene acceso de administrador.`);
+      } else if (type === 'suspend') {
         triggerToast(`Cuenta de ${userName} suspendida.`);
       } else if (type === 'activate') {
-        await updateDoc(userRef, { status: 'active', updatedAt: serverTimestamp() });
         triggerToast(`Cuenta de ${userName} activada.`);
       } else if (type === 'deactivate') {
-        await updateDoc(userRef, { status: 'inactive', updatedAt: serverTimestamp() });
         triggerToast(`Cuenta de ${userName} desactivada.`);
       }
       // Note: delete is intentionally not allowed from UI — must be done from Firebase Console
@@ -268,8 +261,8 @@ export default function RegisteredUsers() {
       <aside className="w-[280px] bg-white border-r border-[#E7E7EC] flex flex-col justify-between fixed top-0 bottom-0 left-0 z-40">
         <div>
           <div className="p-4 border-b border-[#E7E7EC] flex items-center justify-center">
-            <div className="relative w-[270px] h-24">
-              <Image src="/logo.png" alt="EnkargoRD Logo" fill className="object-contain object-center" priority />
+            <div className="relative h-12 w-[220px]">
+              <Image src="/logo-horizontal.png" alt="EnkargoRD Logo" fill className="object-contain object-center" priority />
             </div>
           </div>
           <nav className="p-4 space-y-1">
@@ -291,9 +284,9 @@ export default function RegisteredUsers() {
           </nav>
         </div>
         <div className="p-4 border-t border-[#E7E7EC] space-y-4">
-          <Link href="/" className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all">
-            <LogOut size={16} /> Salir de Admin
-          </Link>
+          <LogoutButton className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all">
+            Salir de Admin
+          </LogoutButton>
         </div>
       </aside>
 
@@ -515,6 +508,52 @@ export default function RegisteredUsers() {
                                       <AlertTriangle size={14} /> Suspender cuenta
                                     </button>
                                   )}
+                                  {role !== 'admin' && (
+                                    <button
+                                      onClick={() => { setConfirmAction({ type: 'promote_admin', userId: user.id, userName: displayName }); setActiveActionMenuId(null); }}
+                                      className="w-full text-left px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 flex items-center gap-2"
+                                    >
+                                      <ShieldCheck size={14} /> Convertir en administrador
+                                    </button>
+                                  )}
+                                  {(role === 'store' || role === 'customer' || user.storeId) && (
+                                    <button
+                                      onClick={() => {
+                                        impersonateUser({
+                                          uid: user.id,
+                                          name: user.displayName || user.name || 'Tienda',
+                                          email: user.email,
+                                          phone: user.phone,
+                                          role: 'Tienda',
+                                          storeId: user.storeId || `STORE-${user.id.slice(0, 16)}`,
+                                          createdAt: user.createdAt
+                                        });
+                                        setActiveActionMenuId(null);
+                                      }}
+                                      className="w-full text-left px-4 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50 border-t border-slate-100 flex items-center gap-2"
+                                    >
+                                      👑 Modo Dios (Entrar)
+                                    </button>
+                                  )}
+                                  {role === 'courier' && (
+                                    <button
+                                      onClick={() => {
+                                        impersonateUser({
+                                          uid: user.id,
+                                          name: user.displayName || user.name || 'Motorista',
+                                          email: user.email,
+                                          phone: user.phone,
+                                          role: 'Motorista',
+                                          courierId: user.courierId || user.id,
+                                          createdAt: user.createdAt
+                                        });
+                                        setActiveActionMenuId(null);
+                                      }}
+                                      className="w-full text-left px-4 py-2 text-xs font-bold text-teal-700 hover:bg-teal-50 border-t border-slate-100 flex items-center gap-2"
+                                    >
+                                      🏍️ Modo Dios (Motorista)
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -627,7 +666,7 @@ export default function RegisteredUsers() {
             <div className="space-y-2">
               <h3 className="font-extrabold text-slate-900 text-base">¿Confirmar acción?</h3>
               <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                Vas a <strong>{confirmAction.type === 'suspend' ? 'suspender' : confirmAction.type === 'activate' ? 'activar' : 'desactivar'}</strong> la cuenta de <strong>{confirmAction.userName}</strong>. Esta acción se aplicará de inmediato en Firestore.
+                Vas a <strong>{confirmAction.type === 'promote_admin' ? 'dar acceso de administrador a' : confirmAction.type === 'suspend' ? 'suspender' : confirmAction.type === 'activate' ? 'activar' : 'desactivar'}</strong> <strong>{confirmAction.userName}</strong>. Esta acción se aplicará de inmediato.
               </p>
             </div>
             <div className="flex gap-3">

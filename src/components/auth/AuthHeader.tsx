@@ -8,9 +8,9 @@ export default function AuthHeader() {
   return (
     <header className="w-full bg-white/80 backdrop-blur-sm border-b border-[#E7E7EC] px-6 py-4 fixed top-0 left-0 right-0 z-50 flex items-center justify-between">
       <Link href="/" className="flex items-center justify-center">
-        <div className="relative w-72 h-24">
+        <div className="relative h-10 w-44 sm:h-12 sm:w-60">
           <Image 
-            src="/logo.png" 
+            src="/logo-horizontal.png" 
             alt="EnkargoRD Logo" 
             fill 
             className="object-contain object-center" 

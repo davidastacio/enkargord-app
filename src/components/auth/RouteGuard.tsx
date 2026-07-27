@@ -25,7 +25,11 @@ export default function RouteGuard({ children, allowedRoles = [] }: RouteGuardPr
       return;
     }
 
-    if (allowedRoles.length > 0 && role) {
+    if (allowedRoles.length > 0) {
+      if (!role) {
+        return;
+      }
+
       // Check if user's role is permitted
       const isAllowed = allowedRoles.includes(role);
       if (!isAllowed) {
@@ -43,7 +47,7 @@ export default function RouteGuard({ children, allowedRoles = [] }: RouteGuardPr
     }
   }, [user, role, loading, allowedRoles, router, pathname]);
 
-  if (loading) {
+  if (loading || (user && allowedRoles.length > 0 && !role)) {
     return (
       <div className="min-h-screen bg-[#F8F9FB] flex flex-col items-center justify-center font-sans">
         <div className="text-center space-y-4">

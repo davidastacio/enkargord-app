@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { doc, updateDoc, addDoc, collection } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import {
+  saveSupabaseCourierLocation,
+  updateSupabaseTrackingStatus,
+} from '@/lib/supabase/tracking';
 
 // Configurable constants
-const LOCATION_UPDATE_INTERVAL_MS = 30000;      // 30 seconds
-const LOCATION_MIN_DISTANCE_METERS = 50;        // 50 meters
+const LOCATION_UPDATE_INTERVAL_MS = 15000;
+const LOCATION_MIN_DISTANCE_METERS = 20;
 const MAX_ACCEPTABLE_ACCURACY_METERS = 100;     // 100 meters
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -25,8 +27,12 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 }
 
-export function useCourierTracking() {
+export function useCourierTracking(courierIdOverride?: string) {
   const { profile } = useAuth() as any;
+  const courierId =
+    courierIdOverride ||
+    profile?.courierId ||
+    (profile?.role === 'Admin' ? profile?.uid : '');
   const [trackingStatus, setTrackingStatus] = useState<"inactive" | "active" | "paused">("inactive");
   const [lastLocation, setLastLocation] = useState<any | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -43,40 +49,23 @@ export function useCourierTracking() {
     };
   }, []);
 
-  // Update tracking status in Firestore couriers/{courierId}
-  const updateFirestoreStatus = async (
+  // Update tracking status in Supabase
+  const updateTrackingStatus = async (
     status: "inactive" | "active" | "paused",
     additionalFields: Record<string, any> = {}
   ) => {
-    if (!profile?.courierId) return;
+    if (!courierId) return;
 
     try {
-      const now = new Date().toISOString();
-      const payload: Record<string, any> = {
-        trackingStatus: status,
-        updatedAt: now
-      };
-
-      if (status === "active") {
-        payload.trackingStartedAt = now;
-      } else if (status === "paused") {
-        payload.trackingPausedAt = now;
-      } else if (status === "inactive") {
-        payload.trackingEndedAt = now;
-      }
-
-      await updateDoc(doc(db, 'couriers', profile.courierId), {
-        ...payload,
-        ...additionalFields
-      });
+      await updateSupabaseTrackingStatus(courierId, status);
     } catch (e) {
-      console.error("Error updating tracking status in Firestore:", e);
+      console.error("Error updating tracking status in Supabase:", e);
     }
   };
 
   // 1. SEND MANUAL POSITION (Puntual)
   const sendManualLocation = async (orderId?: string): Promise<{ success: boolean; msg: string }> => {
-    if (!profile?.courierId) {
+    if (!courierId) {
       return { success: false, msg: "No se identificó el perfil del motorista" };
     }
 
@@ -96,30 +85,16 @@ export function useCourierTracking() {
 
           try {
             const now = new Date().toISOString();
-            const locationSnapshot = {
-              courierId: profile.courierId,
+            await saveSupabaseCourierLocation({
+              courierId,
               courierUid: profile.uid,
-              orderId: orderId || null,
               latitude,
               longitude,
               accuracy,
               heading: position.coords.heading || null,
               speed: position.coords.speed || null,
-              source: "manual",
-              createdAt: now
-            };
-
-            // Write snapshot
-            await addDoc(collection(db, 'courier_locations'), locationSnapshot);
-
-            // Update last location on courier profile
-            await updateDoc(doc(db, 'couriers', profile.courierId), {
-              lastLocation: {
-                latitude,
-                longitude,
-                accuracy,
-                updatedAt: now
-              }
+              trackingStatus: trackingStatus === "paused" ? "paused" : "active",
+              updatedAt: now,
             });
 
             resolve({ success: true, msg: "Ubicación enviada correctamente" });
@@ -142,15 +117,14 @@ export function useCourierTracking() {
 
   // 2. LIVE TRACKING START
   const startTracking = async () => {
-    if (!profile?.courierId) return;
+    if (!courierId) return;
     if (!navigator.geolocation) {
       setErrorMsg("Geolocalización no disponible");
       return;
     }
 
+    if (watchIdRef.current !== null) return;
     setErrorMsg(null);
-    setTrackingStatus("active");
-    await updateFirestoreStatus("active");
 
     const onWatchSuccess = async (position: GeolocationPosition) => {
       const { latitude, longitude, accuracy, heading, speed } = position.coords;
@@ -158,6 +132,9 @@ export function useCourierTracking() {
 
       // Check accuracy
       if (accuracy > MAX_ACCEPTABLE_ACCURACY_METERS) return;
+
+      setTrackingStatus("active");
+      setErrorMsg(null);
 
       const lastSaved = lastSavedLocationRef.current;
       let shouldSave = false;
@@ -188,31 +165,16 @@ export function useCourierTracking() {
         
         try {
           const nowStr = new Date().toISOString();
-          const locationSnapshot = {
-            courierId: profile.courierId,
+          await saveSupabaseCourierLocation({
+            courierId,
             courierUid: profile.uid,
             latitude,
             longitude,
             accuracy,
             heading: heading || null,
             speed: speed || null,
-            source: "automatic",
-            createdAt: nowStr
-          };
-
-          // Save snapshot to history
-          await addDoc(collection(db, 'courier_locations'), locationSnapshot);
-
-          // Update real-time courier coords
-          await updateDoc(doc(db, 'couriers', profile.courierId), {
-            lastLocation: {
-              latitude,
-              longitude,
-              accuracy,
-              heading: heading || null,
-              speed: speed || null,
-              updatedAt: nowStr
-            }
+            trackingStatus: "active",
+            updatedAt: nowStr,
           });
         } catch (e) {
           console.error("Error saving automatic tracking snapshot:", e);
@@ -225,6 +187,12 @@ export function useCourierTracking() {
       if (error.code === error.PERMISSION_DENIED) {
         msg = "Debes permitir el acceso a tu ubicación";
       }
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      setTrackingStatus("inactive");
+      void updateTrackingStatus("inactive");
       setErrorMsg(msg);
     };
 
@@ -242,7 +210,7 @@ export function useCourierTracking() {
       watchIdRef.current = null;
     }
     setTrackingStatus("paused");
-    await updateFirestoreStatus("paused");
+    await updateTrackingStatus("paused");
   };
 
   // 4. LIVE TRACKING RESUME
@@ -258,7 +226,7 @@ export function useCourierTracking() {
     }
     lastSavedLocationRef.current = null;
     setTrackingStatus("inactive");
-    await updateFirestoreStatus("inactive");
+    await updateTrackingStatus("inactive");
   };
 
   return {

@@ -8,7 +8,6 @@ import {
   Package2,
   Users,
   Settings,
-  LogOut,
   Shield,
   Play,
   Pause,
@@ -22,23 +21,24 @@ import {
   AlertTriangle,
   RefreshCw,
   PlusCircle,
+  Navigation,
 } from 'lucide-react';
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  doc,
-  updateDoc,
-  addDoc,
-  serverTimestamp,
-  getDoc,
-  setDoc,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
 import WhatsAppContactButton from '@/components/WhatsAppContactButton';
 import AuthenticatedUserMenu from '@/components/auth/AuthenticatedUserMenu';
+import LogoutButton from '@/components/auth/LogoutButton';
+import {
+  addSupabaseOrderEvent,
+  subscribeSupabaseOrders,
+  updateSupabaseOrder,
+} from '@/lib/supabase/orders';
+import { buildWazeUrl } from '@/lib/navigation/waze';
+import CourierLocationSharing from '@/components/courier/CourierLocationSharing';
+import MapComponent from '@/components/MapComponent';
+import {
+  subscribeSupabaseCourierLocation,
+  type CourierLocation,
+} from '@/lib/supabase/tracking';
 
 const STATUS_LABEL: Record<string, string> = {
   pending: 'Pendiente',
@@ -75,6 +75,7 @@ export default function MisEntregasPage() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [courierLocation, setCourierLocation] = useState<CourierLocation | null>(null);
 
   // Unified Identifier matching actual user/courier profile
   const adminUid = authUser?.uid;
@@ -132,17 +133,11 @@ export default function MisEntregasPage() {
 
     console.log(`[Repartidor Debug] Conectando listener real-time a orders con courierId: ${adminCourierId}`);
 
-    const q = query(
-      collection(db, 'orders'),
-      where('courierId', '==', adminCourierId),
-      where('status', 'in', ACTIVE_STATUSES)
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
+    const unsubscribe = subscribeSupabaseOrders(
+      { courierId: adminCourierId },
+      (allOrders) => {
         try {
-          const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+          const list = [...allOrders];
           console.log(`[Repartidor Debug] Consulta exitosa. Pedidos encontrados: ${list.length}`);
           
           list.sort((a: any, b: any) => {
@@ -160,13 +155,22 @@ export default function MisEntregasPage() {
         }
       },
       (err) => {
-        console.error('[Repartidor Debug] Error real en onSnapshot. Código:', err.code, err.message);
-        setError(`No se pudieron cargar los pedidos. (Error: ${err.code || 'Desconocido'})`);
+        console.error('[Repartidor Debug] Error en Supabase Realtime:', err);
+        setError('No se pudieron cargar los pedidos.');
         setLoading(false);
       }
     );
 
     return () => unsubscribe();
+  }, [adminCourierId, hasOperativeProfile]);
+
+  useEffect(() => {
+    if (!adminCourierId || hasOperativeProfile !== true) return;
+    return subscribeSupabaseCourierLocation(
+      adminCourierId,
+      setCourierLocation,
+      (locationError) => console.error("Error loading courier live location:", locationError),
+    );
   }, [adminCourierId, hasOperativeProfile]);
 
   // ── Toast helper ────────────────────────────────────────────────────────────
@@ -245,11 +249,9 @@ export default function MisEntregasPage() {
     setActionLoading(true);
     try {
       const nowStr = new Date().toISOString();
-      const orderRef = doc(db, 'orders', current.id);
-
       const updatePayload: any = {
         status: newStatus,
-        updatedAt: serverTimestamp(),
+        updatedAt: nowStr,
       };
 
       if (newStatus === 'picked_up') {
@@ -258,23 +260,27 @@ export default function MisEntregasPage() {
         updatePayload.inTransitAt = nowStr;
       } else if (newStatus === 'delivered') {
         updatePayload.deliveredAt = nowStr;
-        updatePayload.amountCollected = current.collectionAmount || current.financials?.orderCollectionAmount || 0;
+        updatePayload.amountCollected =
+          Number(current.collectionAmount || current.financials?.orderCollectionAmount || 0) +
+          Number(current.shippingCost || current.financials?.shippingCost || 0);
+        updatePayload.collectedAmount = updatePayload.amountCollected;
       }
 
-      await updateDoc(orderRef, updatePayload);
+      await updateSupabaseOrder(current.id, updatePayload);
 
       // Subcollection Event Log
-      await addDoc(collection(db, 'orders', current.id, 'events'), {
+      await addSupabaseOrderEvent(current.id, {
         type: `status_changed_${newStatus}`,
         previousStatus: current.status,
         newStatus: newStatus,
-        performedByUid: adminCourierId,
-        performedByRole: 'admin',
-        createdAt: serverTimestamp(),
+        actorUid: adminCourierId,
+        actorRole: 'admin',
+        createdAt: nowStr,
         note: `Estado cambiado a ${STATUS_LABEL[newStatus] || newStatus} en modo repartidor (admin)`,
       });
 
       triggerToast(`Estado de ${current.customerName || 'Cliente'} cambiado a: ${STATUS_LABEL[newStatus] || newStatus}`);
+      if (newStatus === 'delivered') setCurrentIdx(0);
     } catch (err) {
       console.error('Error updating status in mis-entregas:', err);
       triggerToast('Error al actualizar el estado del pedido.');
@@ -284,18 +290,19 @@ export default function MisEntregasPage() {
   };
 
   // ── Derived data ─────────────────────────────────────────────────────────────
-  const routeOrders = orders;
+  const routeOrders = orders.filter((order) => ACTIVE_STATUSES.includes(String(order.status)));
   const current = routeOrders[currentIdx];
   const total = routeOrders.length;
 
   const deliveredToday = orders.filter((o) => o.status === 'delivered').length;
   const totalCollected = orders
     .filter((o) => o.status === 'delivered')
-    .reduce((s: number, o: any) => s + (o.amountCollected || 0), 0);
+    .reduce((s: number, o: any) => s + Number(o.amountCollected ?? o.collectedAmount ?? 0), 0);
   const noAnswerCount = orders.filter((o) => o.status === 'customer_unreachable').length;
 
   return (
     <div className="min-h-screen bg-[#F8F9FB] font-sans text-slate-800 antialiased">
+      <CourierLocationSharing />
 
       {/* Toast */}
       {toast && (
@@ -308,8 +315,8 @@ export default function MisEntregasPage() {
       {/* Sidebar */}
       <aside className="w-[260px] bg-white border-r border-[#E7E7EC] flex flex-col fixed top-0 bottom-0 left-0 z-40">
         <div className="p-4 border-b border-[#E7E7EC] flex items-center justify-center">
-          <div className="relative w-[200px] h-16">
-            <Image src="/logo.png" alt="EnkargoRD" fill className="object-contain object-center" priority />
+          <div className="relative h-11 w-[210px]">
+            <Image src="/logo-horizontal.png" alt="EnkargoRD" fill className="object-contain object-center" priority />
           </div>
         </div>
         <nav className="p-3 space-y-1 flex-1">
@@ -337,9 +344,9 @@ export default function MisEntregasPage() {
             <Shield size={13} className="text-[#d3121a] flex-shrink-0" />
             <span className="text-[10px] font-bold text-[#d3121a]">Modo Repartidor Activo</span>
           </div>
-          <Link href="/" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all">
-            <LogOut size={16} /> Cerrar sesión
-          </Link>
+          <LogoutButton className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all">
+            Cerrar sesión
+          </LogoutButton>
         </div>
       </aside>
 
@@ -450,6 +457,38 @@ export default function MisEntregasPage() {
               {/* Current order card */}
               {current && (
                 <div className="space-y-4">
+                  <div className="h-[320px] overflow-hidden rounded-2xl border border-[#E7E7EC] bg-white shadow-sm">
+                    {courierLocation?.trackingStatus === 'active' ? (
+                      <MapComponent
+                        activeCouriers={[
+                          {
+                            name: 'Mi ubicación en vivo',
+                            status: 'En Vivo',
+                            lat: courierLocation.latitude,
+                            lng: courierLocation.longitude,
+                            pendingCount: total,
+                          },
+                          ...(Number.isFinite(Number(current.latitude)) && Number.isFinite(Number(current.longitude))
+                            ? [{
+                                name: `Destino: ${current.customerName || 'Cliente'}`,
+                                status: 'Destino',
+                                lat: Number(current.latitude),
+                                lng: Number(current.longitude),
+                                pendingCount: 0,
+                              }]
+                            : []),
+                        ]}
+                      />
+                    ) : (
+                      <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+                        <MapPin size={34} className="mb-3 text-slate-300" />
+                        <p className="text-xs font-extrabold text-slate-700">Ubicación en vivo no disponible</p>
+                        <p className="mt-1 max-w-sm text-[11px] text-slate-400">
+                          Pulsa “Compartir ubicación” y permite el acceso desde el navegador. Si lo bloqueaste, actívalo desde el candado junto a la dirección web.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                   <div className="bg-gradient-to-br from-[#d3121a] to-[#b00f14] rounded-2xl p-6 text-white shadow-lg shadow-red-200">
                     <div className="flex items-center justify-between mb-4">
                       <span className="text-xs font-bold uppercase tracking-widest text-red-200">
@@ -472,10 +511,13 @@ export default function MisEntregasPage() {
                       <span className="text-xs text-red-200">Tienda:</span>
                       <span className="text-sm font-bold">{current.storeName || '—'}</span>
                       <span className="ml-auto text-xl font-extrabold">
-                        RD${(current.collectionAmount || current.financials?.orderCollectionAmount || 0).toLocaleString()}
+                        RD${(
+                          Number(current.collectionAmount || current.financials?.orderCollectionAmount || 0) +
+                          Number(current.shippingCost || current.financials?.shippingCost || 0)
+                        ).toLocaleString()}
                       </span>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <a
                         href={`tel:${current.customerPhone || current.customer?.phone || ''}`}
                         className="flex items-center justify-center gap-2 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-sm font-bold text-white"
@@ -492,6 +534,15 @@ export default function MisEntregasPage() {
                         className="flex items-center justify-center gap-2 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-sm font-bold text-white w-full"
                         label="WhatsApp"
                       />
+                      <a
+                        href={buildWazeUrl(current)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 py-3 bg-white text-[#d3121a] hover:bg-red-50 rounded-xl text-sm font-extrabold"
+                        aria-label={`Abrir en Waze la dirección de ${current.customerName || 'este cliente'}`}
+                      >
+                        <Navigation size={15} /> Abrir en Waze
+                      </a>
                     </div>
                   </div>
 

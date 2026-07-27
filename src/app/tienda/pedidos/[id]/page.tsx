@@ -20,9 +20,11 @@ import {
   XCircle,
   FileText
 } from 'lucide-react';
-import { doc, onSnapshot, collection, query, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import {
+  subscribeSupabaseOrder,
+  subscribeSupabaseOrderEvents,
+} from '@/lib/supabase/orders';
 
 interface OrderEvent {
   id: string;
@@ -47,18 +49,15 @@ export default function StoreOrderDetailPage() {
     if (!orderId || !profile?.uid) return;
 
     setLoading(true);
-    const orderRef = doc(db, 'orders', orderId);
-
-    const unsubscribeOrder = onSnapshot(orderRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+    const unsubscribeOrder = subscribeSupabaseOrder(orderId, (data) => {
+      if (data) {
         const storeId = profile.storeId || profile.uid;
 
         // Security check: restrict viewing to owner store or admin
         if (profile.role !== 'Admin' && profile.role !== 'Administrador' && data.storeId !== storeId && data.storeId !== profile.uid) {
           setOrder(null);
         } else {
-          setOrder({ id: docSnap.id, ...data });
+          setOrder(data);
         }
       } else {
         setOrder(null);
@@ -69,11 +68,9 @@ export default function StoreOrderDetailPage() {
       setLoading(false);
     });
 
-    // Subcollection timeline events
-    const eventsQuery = query(collection(db, 'orders', orderId, 'events'), orderBy('createdAt', 'desc'));
-    const unsubscribeEvents = onSnapshot(eventsQuery, (snapshot) => {
-      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as OrderEvent));
-      setEvents(list);
+    // Supabase timeline events
+    const unsubscribeEvents = subscribeSupabaseOrderEvents(orderId, (list) => {
+      setEvents(list as OrderEvent[]);
     }, (err) => {
       console.error("Error loading order timeline events:", err);
     });

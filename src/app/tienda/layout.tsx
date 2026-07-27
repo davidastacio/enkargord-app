@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -12,7 +13,8 @@ import {
   BarChart2, 
   CreditCard, 
   Settings, 
-  LogOut, 
+  Menu,
+  X,
   Bell, 
   ChevronDown,
   Calendar,
@@ -21,10 +23,12 @@ import {
 import RouteGuard from '@/components/auth/RouteGuard';
 import AuthenticatedUserMenu from '@/components/auth/AuthenticatedUserMenu';
 import { useAuth } from '@/hooks/useAuth';
+import LogoutButton from '@/components/auth/LogoutButton';
 
 export default function StoreLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { profile } = useAuth() as any;
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const menuItems = [
     { name: 'Dashboard Tienda', href: '/tienda', icon: Package },
@@ -40,23 +44,29 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
   return (
     <RouteGuard allowedRoles={['Tienda', 'Admin']}>
       <div className="min-h-screen bg-[#F8F9FB] flex font-sans text-slate-800 antialiased">
+      {sidebarOpen && (
+        <button type="button" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm lg:hidden" />
+      )}
       
       {/* ==========================================
          LEFT SIDEBAR
          ========================================== */}
-      <aside className="w-[280px] bg-white border-r border-[#E7E7EC] flex flex-col justify-between fixed top-0 bottom-0 left-0 z-40">
+      <aside className={`${sidebarOpen ? 'flex' : 'hidden'} lg:flex w-[min(280px,86vw)] lg:w-[280px] bg-white border-r border-[#E7E7EC] flex-col justify-between fixed top-0 bottom-0 left-0 z-50`}>
         <div>
           {/* Logo Header */}
           <div className="p-4 border-b border-[#E7E7EC] flex items-center justify-center">
-            <div className="relative w-[270px] h-24">
+            <div className="relative h-12 w-[220px]">
               <Image 
-                src="/logo.png" 
+                src="/logo-horizontal.png" 
                 alt="EnkargoRD Logo" 
                 fill 
                 className="object-contain object-center" 
                 priority
               />
             </div>
+            <button type="button" onClick={() => setSidebarOpen(false)} className="p-2 lg:hidden" aria-label="Cerrar menú">
+              <X size={20} />
+            </button>
           </div>
 
           {/* Navigation Links */}
@@ -68,6 +78,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                 <Link
                   key={item.name}
                   href={item.href}
+                  onClick={() => setSidebarOpen(false)}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
                     isActive
                       ? 'bg-[#d3121a] text-white shadow-md shadow-red-100'
@@ -102,32 +113,35 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
             </button>
           </div>
 
-          <Link 
-            href="/"
+          <LogoutButton
             className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all"
           >
-            <LogOut size={16} />
             Cerrar sesión
-          </Link>
+          </LogoutButton>
         </div>
       </aside>
 
       {/* ==========================================
          MAIN WRAPPER & HEADER
          ========================================== */}
-      <div className="flex-grow pl-[280px] min-h-screen flex flex-col">
+      <div className="flex-grow min-w-0 pl-0 lg:pl-[280px] min-h-screen flex flex-col">
         
-        <header className="bg-white border-b border-[#E7E7EC] px-8 py-5 flex items-center justify-between sticky top-0 z-30">
-          <div>
+        <header className="bg-white border-b border-[#E7E7EC] px-4 sm:px-6 lg:px-8 py-4 sm:py-5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30">
+          <div className="flex items-center gap-3 min-w-0">
+            <button type="button" onClick={() => setSidebarOpen(true)} className="p-2 border border-[#E7E7EC] rounded-xl lg:hidden" aria-label="Abrir menú">
+              <Menu size={19} />
+            </button>
+            <div className="min-w-0">
             <h1 className="text-xl font-extrabold text-slate-950 tracking-tight">
               ¡Bienvenido, {profile?.name || 'Tienda'}!
             </h1>
             <p className="text-xs text-slate-400 mt-1 font-medium">
               Este es el panel de operaciones de tu tienda. Gestiona tus pedidos y envíos.
             </p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-2 sm:gap-4 lg:gap-5 ml-auto">
             {/* Date Widget */}
             <div className="hidden md:flex items-center gap-2 border border-[#E7E7EC] px-3.5 py-2.5 rounded-xl bg-slate-50 text-xs font-bold text-slate-600">
               <Calendar size={14} className="text-[#d3121a]" />
@@ -146,15 +160,15 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
             {/* Quick Action */}
             <Link
               href="/tienda/crear-pedido"
-              className="bg-[#d3121a] hover:bg-[#b00f14] text-white font-extrabold text-xs py-3 px-5 rounded-xl shadow-md shadow-red-100 transition-all flex items-center gap-2"
+              className="bg-[#d3121a] hover:bg-[#b00f14] text-white font-extrabold text-xs py-2.5 sm:py-3 px-3 sm:px-5 rounded-xl shadow-md shadow-red-100 transition-all flex items-center gap-2"
             >
-              + Crear Pedido
+              <span className="sm:hidden">+ Pedido</span><span className="hidden sm:inline">+ Crear Pedido</span>
             </Link>
           </div>
         </header>
 
         {/* Content Wrapper */}
-        <main className="p-8 flex-grow">
+        <main className="p-4 sm:p-6 lg:p-8 flex-grow min-w-0 overflow-x-hidden">
           {children}
         </main>
 

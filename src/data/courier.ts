@@ -50,7 +50,7 @@ export type CalculationType = 'fixed' | 'percentage_of_shipping' | 'percentage_o
 
 export interface SettlementBeneficiary {
   id: string;
-  name: string;                    // e.g. "Polanco", "Transportadora"
+  name: string;                    // e.g. "Creador", "Transportadora"
   calculationType: CalculationType;
   fixedAmount: number;             // Used when type is 'fixed'
   percentage: number;              // Used when type is 'percentage_*'
@@ -153,7 +153,7 @@ export interface OrderFinancials {
   courierCommission: number;
   /** Amount for the transport company */
   transportCompanyAmount: number;
-  /** Beneficiary breakdown (Polanco, etc.) */
+  /** Beneficiary breakdown (creator, transport company, etc.) */
   beneficiaryBreakdown: { beneficiaryId: string; name: string; amount: number }[];
   /** Fulfillment surcharge if any */
   fulfillmentCost: number;
@@ -422,8 +422,8 @@ export const DEFAULT_PRICING: PricingSettings = {
   zoneSurcharges: [],
   beneficiaries: [
     {
-      id: 'polanco',
-      name: 'Polanco',
+      id: 'creator_commission',
+      name: 'Comisión para creador',
       calculationType: 'fixed',
       fixedAmount: 50,
       percentage: 0,
@@ -514,7 +514,7 @@ export const DEFAULT_ORDERS: CourierOrder[] = [
       storeProductAmount: 1800,
       courierCommission: 200,
       transportCompanyAmount: 90,
-      beneficiaryBreakdown: [{ beneficiaryId: 'polanco', name: 'Polanco', amount: 50 }],
+      beneficiaryBreakdown: [{ beneficiaryId: 'creator_commission', name: 'Comisión para creador', amount: 50 }],
       fulfillmentCost: 40,
     },
     fulfillment: {
@@ -551,7 +551,7 @@ export const DEFAULT_ORDERS: CourierOrder[] = [
       storeProductAmount: 1260,
       courierCommission: 150,
       transportCompanyAmount: 90,
-      beneficiaryBreakdown: [{ beneficiaryId: 'polanco', name: 'Polanco', amount: 50 }],
+      beneficiaryBreakdown: [{ beneficiaryId: 'creator_commission', name: 'Comisión para creador', amount: 50 }],
       fulfillmentCost: 40,
     },
     fulfillment: {
@@ -586,7 +586,7 @@ export const DEFAULT_ORDERS: CourierOrder[] = [
       storeProductAmount: 2800,
       courierCommission: 300,
       transportCompanyAmount: 100,
-      beneficiaryBreakdown: [{ beneficiaryId: 'polanco', name: 'Polanco', amount: 50 }],
+      beneficiaryBreakdown: [{ beneficiaryId: 'creator_commission', name: 'Comisión para creador', amount: 50 }],
       fulfillmentCost: 50,
     },
     fulfillment: { required: false },
@@ -628,7 +628,7 @@ export const DEFAULT_ORDERS: CourierOrder[] = [
       storeProductAmount: 1550,
       courierCommission: 150,
       transportCompanyAmount: 100,
-      beneficiaryBreakdown: [{ beneficiaryId: 'polanco', name: 'Polanco', amount: 50 }],
+      beneficiaryBreakdown: [{ beneficiaryId: 'creator_commission', name: 'Comisión para creador', amount: 50 }],
       fulfillmentCost: 50,
     },
     fulfillment: {

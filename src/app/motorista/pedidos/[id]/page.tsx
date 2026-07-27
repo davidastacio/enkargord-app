@@ -18,13 +18,19 @@ import {
   ArrowRight,
   AlertCircle,
   HelpCircle,
+  Navigation,
 } from 'lucide-react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
+import {
+  addSupabaseOrderEvent,
+  subscribeSupabaseOrder,
+  subscribeSupabaseOrderEvents,
+  updateSupabaseOrder,
+} from '@/lib/supabase/orders';
 import { useCourierTracking } from '@/hooks/useCourierTracking';
 import { buildWhatsAppUrl, DEFAULT_WHATSAPP_TEMPLATES } from '@/data/courier';
 import WhatsAppContactButton from '@/components/WhatsAppContactButton';
+import { buildWazeUrl } from '@/lib/navigation/waze';
 
 type OrderStatus =
   | "pending"
@@ -82,17 +88,18 @@ export default function PedidoDetallePage() {
     if (!orderId || !profile?.courierId) return;
 
     // 1. Subscribe to order details
-    const unsubscribeOrder = onSnapshot(doc(db, 'orders', orderId), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+    const unsubscribeOrder = subscribeSupabaseOrder(orderId, (data) => {
+      if (data) {
         // Security check: only allow assigned courier to view this
         if (data.courierId !== profile.courierId) {
           alert('No tienes permisos para ver esta orden.');
           router.push('/motorista/pedidos');
           return;
         }
-        setOrder({ id: docSnap.id, ...data });
-        setCollectedAmount(String(data.collectionAmount || 0));
+        setOrder(data);
+        setCollectedAmount(
+          String(Number(data.collectionAmount || 0) + Number(data.shippingCost || 0)),
+        );
       } else {
         alert('El pedido no existe.');
         router.push('/motorista/pedidos');
@@ -103,11 +110,9 @@ export default function PedidoDetallePage() {
       setLoading(false);
     });
 
-    // 2. Subscribe to order events subcollection
-    const qEvents = query(collection(db, 'orders', orderId, 'events'), orderBy('createdAt', 'desc'));
-    const unsubscribeEvents = onSnapshot(qEvents, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OrderEvent));
-      setEvents(list);
+    // 2. Subscribe to Supabase order events
+    const unsubscribeEvents = subscribeSupabaseOrderEvents(orderId, (list) => {
+      setEvents(list as OrderEvent[]);
     }, (error) => {
       console.error("Error fetching order events:", error);
     });
@@ -128,14 +133,14 @@ export default function PedidoDetallePage() {
       const nowString = new Date().toISOString();
 
       // 1. Update order document
-      await updateDoc(doc(db, 'orders', order.id), {
+      await updateSupabaseOrder(order.id, {
         status: nextStatus,
         updatedAt: nowString,
         ...additionalFields
       });
 
-      // 2. Log event in orders/{id}/events subcollection
-      await addDoc(collection(db, 'orders', order.id, 'events'), {
+      // 2. Log event in Supabase
+      await addSupabaseOrderEvent(order.id, {
         type: `status_updated_to_${nextStatus}`,
         previousStatus: prevStatus,
         newStatus: nextStatus,
@@ -146,33 +151,8 @@ export default function PedidoDetallePage() {
         createdAt: nowString
       });
 
-      // 3. Create global audit log
-      const auditId = `AUD-${Date.now()}`;
-      await setDoc(doc(db, 'audit_logs', auditId), {
-        id: auditId,
-        action: `courier_transition_${nextStatus}`,
-        actorUid: profile?.uid || 'UNKNOWN',
-        actorRole: 'courier',
-        targetType: 'order',
-        targetId: order.id,
-        metadata: {
-          previousStatus: prevStatus,
-          newStatus: nextStatus,
-          ...additionalFields
-        },
-        createdAt: nowString
-      });
-
-      // 4. Update courier stats if delivered
-      if (nextStatus === 'delivered' && profile?.courierId) {
-        await updateDoc(doc(db, 'couriers', profile.courierId), {
-          completedOrderCount: incrementValue(1),
-          currentOrderCount: incrementValue(-1),
-          updatedAt: nowString
-        });
-      }
-
-      // 5. Update courier status to available if no other active orders in route
+      // Courier statistics are derived from orders in Supabase.
+      // Update courier status to available if no other active orders in route
       // (This will be recalculated dynamically by admin, no need to force here)
 
     } catch (error) {
@@ -181,13 +161,6 @@ export default function PedidoDetallePage() {
     } finally {
       setUpdating(false);
     }
-  };
-
-  // Safe helper to increment since server increment is imported differently
-  const incrementValue = (val: number) => {
-    // In browser client sdk we can import increment from firestore
-    const { increment } = require('firebase/firestore');
-    return increment(val);
   };
 
   const handleConfirmRecogida = () => {
@@ -204,6 +177,11 @@ export default function PedidoDetallePage() {
 
   const handleUnreachableSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const incidentNote = unreachableNote.trim();
+    if (!incidentNote) {
+      alert('Escribe una nota indicando qué ocurrió con el cliente.');
+      return;
+    }
     const reasonLabels: Record<string, string> = {
       no_answer_call: 'No responde llamada',
       no_answer_wa: 'No responde WhatsApp',
@@ -214,11 +192,11 @@ export default function PedidoDetallePage() {
     };
 
     const friendlyReason = reasonLabels[unreachableReason] || unreachableReason;
-    const note = `Intento de contacto fallido: ${friendlyReason}. ${unreachableNote}`;
+    const note = `Intento de contacto fallido: ${friendlyReason}. Nota del motorista: ${incidentNote}`;
 
     transitionTo('customer_unreachable', {
       unreachableReason,
-      unreachableNote,
+      unreachableNote: incidentNote,
       lastContactAttemptAt: new Date().toISOString()
     }, note);
 
@@ -229,7 +207,7 @@ export default function PedidoDetallePage() {
   const handleDeliveredSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const expected = order.collectionAmount || 0;
+    const expected = Number(order.collectionAmount || 0) + Number(order.shippingCost || 0);
     const actual = parseFloat(collectedAmount) || 0;
 
     if (actual < 0) {
@@ -252,6 +230,7 @@ export default function PedidoDetallePage() {
     transitionTo('delivered', {
       deliveredAt: new Date().toISOString(),
       deliveredByUid: profile?.uid || 'UNKNOWN',
+      amountCollected: actual,
       collectedAmount: actual,
       collectionPaymentMethod: paymentMethod,
       receiverName: receiverName || 'Cliente',
@@ -366,6 +345,15 @@ export default function PedidoDetallePage() {
               <span className="text-[10px] font-bold text-slate-400 block mt-1">
                 {order.sectorName}, {order.municipalityName} ({order.provinceName})
               </span>
+              <a
+                href={buildWazeUrl(order)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl bg-[#d3121a] px-4 py-2.5 text-xs font-extrabold text-white shadow-sm transition-colors hover:bg-[#b00f14]"
+                aria-label={`Abrir en Waze la dirección de ${order.customerName || 'este cliente'}`}
+              >
+                <Navigation size={15} /> Abrir en Waze
+              </a>
             </div>
 
             {order.reference && (
@@ -530,21 +518,30 @@ export default function PedidoDetallePage() {
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
-                  Nota u observación
+                  Nota u observación *
                 </label>
                 <textarea
+                  required
+                  minLength={3}
+                  maxLength={500}
                   value={unreachableNote}
                   onChange={(e) => setUnreachableNote(e.target.value)}
                   placeholder="Detalla qué ocurrió (ej: llamé 3 veces a las 2:00pm)..."
                   className="w-full px-3 py-2.5 text-xs border border-[#E7E7EC] rounded-xl focus:outline-none h-20 resize-none"
                 />
+                <div className="mt-1 text-right text-[10px] font-semibold text-slate-400">
+                  {unreachableNote.length}/500
+                </div>
               </div>
             </div>
 
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setShowUnreachableModal(false)}
+                onClick={() => {
+                  setShowUnreachableModal(false);
+                  setUnreachableNote('');
+                }}
                 className="flex-1 py-3 bg-slate-50 hover:bg-slate-100 border border-[#E7E7EC] rounded-xl text-xs font-bold text-slate-600"
               >
                 Cancelar
