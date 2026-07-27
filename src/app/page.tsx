@@ -19,6 +19,7 @@ import {
   ArrowRight,
   HelpCircle,
   TrendingUp,
+  Smartphone,
 } from 'lucide-react';
 
 export default function LandingPage() {
@@ -73,6 +74,18 @@ export default function LandingPage() {
 
           {/* Auth Action Buttons right */}
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
+                }
+              }}
+              className="hidden sm:flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs py-2.5 px-4 rounded-xl transition-all shadow-sm"
+              title="Instalar EnkargoRD App en tu celular"
+            >
+              <Smartphone size={15} className="text-emerald-400" />
+              <span>Instalar App</span>
+            </button>
             <Link 
               href="/login" 
               className="border border-[#d3121a] text-[#d3121a] hover:bg-[#d3121a]/5 font-bold text-xs py-2.5 px-5 rounded-xl transition-all"

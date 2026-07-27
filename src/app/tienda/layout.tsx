@@ -18,7 +18,8 @@ import {
   Bell, 
   ChevronDown,
   Calendar,
-  HelpCircle
+  HelpCircle,
+  Smartphone
 } from 'lucide-react';
 import RouteGuard from '@/components/auth/RouteGuard';
 import AuthenticatedUserMenu from '@/components/auth/AuthenticatedUserMenu';
@@ -102,6 +103,18 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
         {/* Sidebar Footer Cards */}
         <div className="p-4 border-t border-[#E7E7EC] space-y-4">
           
+          <button
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
+              }
+            }}
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-[11px] py-2.5 px-4 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2"
+          >
+            <Smartphone size={14} className="text-emerald-400" />
+            <span>Instalar App Web</span>
+          </button>
+
           {/* Support Widget */}
           <div className="p-4 bg-slate-50 border border-[#E7E7EC] rounded-2xl text-center space-y-3">
             <div className="w-10 h-10 bg-[#fee2e2] text-[#d3121a] rounded-full flex items-center justify-center mx-auto">
