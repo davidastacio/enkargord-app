@@ -29,7 +29,7 @@ import {
 
 export default function CreateOrder() {
   const router = useRouter();
-  const { profile } = useAuth();
+  const { profile, user, isImpersonating } = useAuth();
 
   // SECTION 1 — DATOS DEL CLIENTE
   const [custName, setCustName] = useState('');
@@ -410,7 +410,7 @@ export default function CreateOrder() {
         id: orderTrackingCode,
         tracking: orderTrackingCode,
         storeId: storeIdReal,
-        createdByUid: profile?.uid || "STORE_01",
+        createdByUid: user?.uid || profile?.uid || "STORE_01",
         
         customerName: custName,
         customerPhone: custPhone,
@@ -532,8 +532,13 @@ export default function CreateOrder() {
           <p className="text-xs text-slate-400 mt-1 font-medium">
             Registra los datos de transporte bajo protección de privacidad comercial de EnkargoRD.
           </p>
+          {isImpersonating && (
+            <div className="text-[10px] text-amber-900 bg-amber-100 border border-amber-300 px-3 py-1 rounded-lg font-black inline-block mt-2">
+              ⚡ MODO DIOS ACTIVO: Creando pedido a nombre de "{profile?.name}"
+            </div>
+          )}
           {diagCode && (
-            <div className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest bg-white border border-[#E7E7EC] px-3 py-1.5 rounded-lg inline-block mt-2">
+            <div className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest bg-white border border-[#E7E7EC] px-3 py-1.5 rounded-lg inline-block mt-2 ml-2">
               Código de diagnóstico: {diagCode}
             </div>
           )}
