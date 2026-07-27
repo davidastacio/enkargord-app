@@ -67,6 +67,7 @@ export interface ZoneSurcharge {
 export interface PricingSettings {
   id: string;
   baseShippingCost: number;        // Default delivery tariff (RD$)
+  expressShippingCost?: number;     // Express delivery tariff (RD$)
   fulfillmentCosts: Record<string, number>; // key = packaging type, value = RD$
   zoneSurcharges: ZoneSurcharge[];
   beneficiaries: SettlementBeneficiary[];
@@ -409,7 +410,8 @@ export function calculateOrderFinancials(
 
 export const DEFAULT_PRICING: PricingSettings = {
   id: 'default',
-  baseShippingCost: 200,
+  baseShippingCost: 300,
+  expressShippingCost: 450,
   fulfillmentCosts: {
     sobre: 30,
     bolsa_seguridad: 40,

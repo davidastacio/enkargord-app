@@ -82,7 +82,9 @@ export default function CreateOrder() {
   const [pendingDragCoords, setPendingDragCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [dragAddressDetails, setDragAddressDetails] = useState<any>(null);
 
+  const [shippingType, setShippingType] = useState<'regular' | 'express'>('regular');
   const [shippingFee, setShippingFee] = useState(DEFAULT_PRICING.baseShippingCost);
+  const [expressShippingFee, setExpressShippingFee] = useState(DEFAULT_PRICING.expressShippingCost || 450);
 
   useEffect(() => {
     if (!profile?.uid) return;
@@ -90,8 +92,14 @@ export default function CreateOrder() {
     void getOperationSettings<PricingSettings>()
       .then((settings) => {
         const configuredFee = parseFloat(String(settings?.baseShippingCost ?? ''));
-        if (active && Number.isFinite(configuredFee) && configuredFee >= 0) {
-          setShippingFee(configuredFee);
+        const configuredExpressFee = parseFloat(String(settings?.expressShippingCost ?? ''));
+        if (active) {
+          if (Number.isFinite(configuredFee) && configuredFee >= 0) {
+            setShippingFee(configuredFee);
+          }
+          if (Number.isFinite(configuredExpressFee) && configuredExpressFee >= 0) {
+            setExpressShippingFee(configuredExpressFee);
+          }
         }
       })
       .catch((error) => {
@@ -101,6 +109,8 @@ export default function CreateOrder() {
       active = false;
     };
   }, [profile?.uid]);
+
+  const activeShippingFee = shippingType === 'express' ? expressShippingFee : shippingFee;
 
   // Filtered dropdowns
   const availableMunicipalities = MUNICIPALITIES.filter(m => m.provinceId === selectedProvId);
@@ -434,7 +444,8 @@ export default function CreateOrder() {
         
         requiresCashOnDelivery: requiresCod,
         collectionAmount: requiresCod ? (parseFloat(collectAmount) || 0) : 0,
-        shippingCost: shippingFee,
+        shippingCost: activeShippingFee,
+        shippingType: shippingType,
         paymentMethod: paymentMethod || null,
         
         requiresFulfillment: false,
@@ -912,10 +923,71 @@ export default function CreateOrder() {
 
           </div>
 
-          {/* SECCIÓN 3 — RECAUDO Y PAGO (COD) */}
+          {/* SECCIÓN 3 — SELECCIÓN DE TARIFA DE ENVÍO */}
           <div className="space-y-4">
             <h3 className="font-extrabold text-slate-950 text-xs border-b border-slate-100 pb-2 uppercase tracking-wide">
-              3. Recaudo y Pago Financiero (COD)
+              3. Tipo de Tarifa de Envío
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              
+              {/* Opción 1: Envío Estándar / Regular */}
+              <button
+                type="button"
+                onClick={() => setShippingType('regular')}
+                className={`p-4 rounded-2xl border text-left transition-all relative ${
+                  shippingType === 'regular'
+                    ? 'bg-white border-[#d3121a] shadow-md ring-2 ring-[#d3121a]/20'
+                    : 'bg-slate-50 border-[#E7E7EC] hover:bg-white text-slate-600'
+                }`}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="font-extrabold text-xs text-slate-900">Envío Estándar / Regular</span>
+                  <span className="font-black text-sm text-slate-900">RD${shippingFee.toLocaleString()}</span>
+                </div>
+                <p className="text-[11px] text-slate-400 font-medium mt-1 leading-snug">
+                  Entrega regular express en ruta estándar (24-48 hrs).
+                </p>
+                {shippingType === 'regular' && (
+                  <span className="text-[9px] font-extrabold text-[#d3121a] bg-[#fee2e2] px-2.5 py-0.5 rounded-full inline-block mt-2">
+                    ✓ Seleccionado
+                  </span>
+                )}
+              </button>
+
+              {/* Opción 2: Envío Express Prioritario */}
+              <button
+                type="button"
+                onClick={() => setShippingType('express')}
+                className={`p-4 rounded-2xl border text-left transition-all relative ${
+                  shippingType === 'express'
+                    ? 'bg-white border-[#d3121a] shadow-md ring-2 ring-[#d3121a]/20'
+                    : 'bg-slate-50 border-[#E7E7EC] hover:bg-white text-slate-600'
+                }`}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="font-extrabold text-xs text-[#d3121a] flex items-center gap-1">
+                    ⚡ Envío Express Prioritario
+                  </span>
+                  <span className="font-black text-sm text-[#d3121a]">RD${expressShippingFee.toLocaleString()}</span>
+                </div>
+                <p className="text-[11px] text-slate-400 font-medium mt-1 leading-snug">
+                  Entrega prioritaria inmediata en tiempo récord mismo día.
+                </p>
+                {shippingType === 'express' && (
+                  <span className="text-[9px] font-extrabold text-[#d3121a] bg-[#fee2e2] px-2.5 py-0.5 rounded-full inline-block mt-2">
+                    ⚡ Seleccionado
+                  </span>
+                )}
+              </button>
+
+            </div>
+          </div>
+
+          {/* SECCIÓN 4 — RECAUDO Y PAGO (COD) */}
+          <div className="space-y-4">
+            <h3 className="font-extrabold text-slate-950 text-xs border-b border-slate-100 pb-2 uppercase tracking-wide">
+              4. Recaudo y Pago Financiero (COD)
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
@@ -1051,13 +1123,20 @@ export default function CreateOrder() {
                 <span className="text-slate-900 font-bold">{paymentMethod}</span>
               </div>
 
+              <div className="flex justify-between">
+                <span>Tipo de Tarifa:</span>
+                <span className={`font-bold ${shippingType === 'express' ? 'text-[#d3121a]' : 'text-slate-900'}`}>
+                  {shippingType === 'express' ? '⚡ Express Prioritario' : 'Estándar / Regular'}
+                </span>
+              </div>
+
               <div className="flex justify-between border-t border-slate-100 pt-3 text-sm font-extrabold text-slate-950">
                 <span>Tarifa de envío:</span>
-                <span className="text-[#d3121a]">RD${shippingFee.toLocaleString()}</span>
+                <span className="text-[#d3121a]">RD${activeShippingFee.toLocaleString()}</span>
               </div>
               <div className="flex justify-between rounded-xl bg-emerald-50 px-3 py-3 text-sm font-extrabold text-emerald-800">
                 <span>Total a recaudar al cliente:</span>
-                <span>RD${((requiresCod ? parseFloat(collectAmount) || 0 : 0) + shippingFee).toLocaleString()}</span>
+                <span>RD${((requiresCod ? parseFloat(collectAmount) || 0 : 0) + activeShippingFee).toLocaleString()}</span>
               </div>
 
             </div>

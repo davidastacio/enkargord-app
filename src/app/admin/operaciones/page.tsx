@@ -321,13 +321,27 @@ export default function OperacionesPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-1.5">
                 <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block">
-                  Envío Estándar (RD$)
+                  Tarifa Envío Estándar / Regular (RD$)
                 </label>
                 <input
                   type="number"
                   value={pricing.baseShippingCost}
                   onChange={(e) => setPricing({ ...pricing, baseShippingCost: Number(e.target.value) })}
                   className="w-full bg-slate-50 border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-bold focus:outline-none focus:border-[#d3121a] focus:bg-white transition-all"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block flex items-center justify-between">
+                  <span>Tarifa Envío Express (RD$)</span>
+                  <span className="text-[9px] bg-red-100 text-[#d3121a] font-extrabold px-2 py-0.5 rounded-md">NUEVO</span>
+                </label>
+                <input
+                  type="number"
+                  value={pricing.expressShippingCost ?? 450}
+                  onChange={(e) => setPricing({ ...pricing, expressShippingCost: Number(e.target.value) })}
+                  className="w-full bg-slate-50 border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-bold focus:outline-none focus:border-[#d3121a] focus:bg-white transition-all"
+                  placeholder="Ej. 450"
                 />
               </div>
             </div>
