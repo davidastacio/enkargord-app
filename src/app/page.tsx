@@ -52,7 +52,7 @@ export default function LandingPage() {
           </Link>
 
           {/* Navigation links center (Desktop) */}
-          <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
+          <nav className="hidden lg:flex items-center gap-5 xl:gap-8 text-sm font-semibold text-slate-600 whitespace-nowrap flex-shrink-0">
             <Link href="#" className="text-[#d3121a] hover:text-[#b00f14] transition-colors relative after:content-[''] after:absolute after:bottom-[-20px] after:left-0 after:right-0 after:h-[2px] after:bg-[#d3121a]">
               Inicio
             </Link>
@@ -79,37 +79,37 @@ export default function LandingPage() {
           </nav>
 
           {/* Auth Action Buttons right (Desktop) */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-2 xl:gap-3 flex-shrink-0">
             <button
               onClick={() => {
                 if (typeof window !== 'undefined') {
                   window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
                 }
               }}
-              className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs py-2.5 px-4 rounded-xl transition-all shadow-sm"
+              className="hidden xl:flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs py-2.5 px-3.5 rounded-xl transition-all shadow-sm whitespace-nowrap flex-shrink-0"
               title="Instalar EnkargoRD App en tu celular"
             >
-              <Smartphone size={15} className="text-emerald-400" />
+              <Smartphone size={14} className="text-emerald-400" />
               <span>Instalar App</span>
             </button>
             <Link 
               href="/login" 
-              className="border border-[#d3121a] text-[#d3121a] hover:bg-[#d3121a]/5 font-bold text-xs py-2.5 px-5 rounded-xl transition-all"
+              className="border border-[#d3121a] text-[#d3121a] hover:bg-[#d3121a]/5 font-bold text-xs py-2.5 px-4 rounded-xl transition-all whitespace-nowrap flex-shrink-0"
             >
               Iniciar sesión
             </Link>
             <Link 
               href="/registro" 
-              className="bg-[#d3121a] hover:bg-[#b00f14] text-white font-bold text-xs py-2.5 px-5 rounded-xl shadow-md shadow-red-100 transition-all"
+              className="bg-[#d3121a] hover:bg-[#b00f14] text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-md shadow-red-100 transition-all whitespace-nowrap flex-shrink-0"
             >
               Regístrate
             </Link>
           </div>
 
-          {/* Mobile Hamburger Button */}
+          {/* Mobile/Tablet Hamburger Button */}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="md:hidden p-2 text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
+            className="lg:hidden p-2 text-slate-800 hover:bg-slate-100 rounded-xl transition-colors flex-shrink-0"
             aria-label="Abrir menú"
           >
             {isMobileMenuOpen ? <X size={26} /> : <Menu size={26} />}
@@ -117,9 +117,9 @@ export default function LandingPage() {
 
         </div>
 
-        {/* Mobile Dropdown Menu Drawer */}
+        {/* Mobile/Tablet Dropdown Menu Drawer */}
         {isMobileMenuOpen && (
-          <div className="md:hidden border-t border-[#E7E7EC] mt-4 pt-4 pb-6 space-y-4 animate-slide-down">
+          <div className="lg:hidden border-t border-[#E7E7EC] mt-4 pt-4 pb-6 space-y-4 animate-slide-down">
             <nav className="flex flex-col space-y-3 font-bold text-sm text-slate-700 px-2">
               <Link 
                 href="#" 
