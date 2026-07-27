@@ -305,7 +305,9 @@ export default function StoreOrdersList() {
                     <td className="py-4 px-6 text-slate-600 font-medium">{o.customerPhone}</td>
                     <td className="py-4 px-6 text-slate-500 max-w-[200px] truncate">{o.address}</td>
                     <td className="py-4 px-6 font-semibold text-[#d3121a]">{o.packageType}</td>
-                    <td className="py-4 px-6 font-extrabold text-slate-900">RD${o.amount.toLocaleString()}</td>
+                    <td className="py-4 px-6 font-extrabold text-slate-900">
+                      {profile?.role === 'Colaborador' ? '***' : `RD$${o.amount.toLocaleString()}`}
+                    </td>
                     
                     <td className="py-4 px-6">
                       <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide ${

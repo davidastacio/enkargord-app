@@ -245,15 +245,21 @@ export default function StoreOrderDetailPage() {
             <div className="bg-slate-50 border border-[#E7E7EC] rounded-xl p-4 grid grid-cols-3 gap-4 text-xs">
               <div>
                 <span className="block text-[10px] font-bold text-slate-400 uppercase">Monto a Recaudar (COD)</span>
-                <span className="text-base font-extrabold text-slate-900">RD${(order.collectionAmount || 0).toLocaleString()}</span>
+                <span className="text-base font-extrabold text-slate-900">
+                  {profile?.role === 'Colaborador' ? '***' : `RD$${(order.collectionAmount || 0).toLocaleString()}`}
+                </span>
               </div>
               <div>
                 <span className="block text-[10px] font-bold text-slate-400 uppercase">Costo de Envío</span>
-                <span className="text-base font-extrabold text-[#d3121a]">RD${(order.shippingCost || 0).toLocaleString()}</span>
+                <span className="text-base font-extrabold text-[#d3121a]">
+                  {profile?.role === 'Colaborador' ? '***' : `RD$${(order.shippingCost || 0).toLocaleString()}`}
+                </span>
               </div>
               <div>
                 <span className="block text-[10px] font-bold text-slate-400 uppercase">Monto Total</span>
-                <span className="text-base font-extrabold text-emerald-600">RD${totalAmount.toLocaleString()}</span>
+                <span className="text-base font-extrabold text-emerald-600">
+                  {profile?.role === 'Colaborador' ? '***' : `RD$${totalAmount.toLocaleString()}`}
+                </span>
               </div>
             </div>
           </section>

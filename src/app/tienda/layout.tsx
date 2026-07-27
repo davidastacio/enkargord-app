@@ -37,19 +37,27 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
     !!profile &&
     (!profile.phone || profile.name === 'Usuario EnkargoRD' || !profile.name);
 
-  const menuItems = [
+  const isCollaborator = profile?.role === 'Colaborador';
+
+  const baseMenuItems = [
     { name: 'Dashboard Tienda', href: '/tienda', icon: Package },
     { name: 'Crear Pedido', href: '/tienda/crear-pedido', icon: PlusCircle },
     { name: 'Mis Pedidos', href: '/tienda/pedidos', icon: ListOrdered },
     { name: 'Seguimiento', href: '/tienda/seguimiento', icon: Map },
     { name: 'Clientes', href: '/tienda/clientes', icon: Users },
     { name: 'Reportes', href: '/tienda/reportes', icon: BarChart2 },
+  ];
+
+  const storeOnlyItems = [
+    { name: 'Mi Equipo', href: '/tienda/equipo', icon: Users },
     { name: 'Pagos y Cobros', href: '/tienda/pagos', icon: CreditCard },
     { name: 'Configuración', href: '/tienda/configuracion', icon: Settings },
   ];
 
+  const menuItems = isCollaborator ? baseMenuItems : [...baseMenuItems, ...storeOnlyItems];
+
   return (
-    <RouteGuard allowedRoles={['Tienda', 'Admin']}>
+    <RouteGuard allowedRoles={['Tienda', 'Admin', 'Colaborador']}>
       <div className="min-h-screen bg-[#F8F9FB] flex font-sans text-slate-800 antialiased">
       {sidebarOpen && (
         <button type="button" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm lg:hidden" />

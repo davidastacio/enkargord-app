@@ -36,7 +36,7 @@ export default function RouteGuard({ children, allowedRoles = [] }: RouteGuardPr
         // Direct to their designated landing page based on role
         if (role === 'Admin') {
           router.replace('/admin');
-        } else if (role === 'Tienda') {
+        } else if (role === 'Tienda' || role === 'Colaborador') {
           router.replace('/tienda');
         } else if (role === 'Motorista') {
           router.replace('/motorista');

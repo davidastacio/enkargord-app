@@ -46,6 +46,7 @@ async function drawLabel(
   order: Record<string, any>,
   font: PDFFont,
   bold: PDFFont,
+  hideAmounts: boolean = false,
 ) {
   const metadata = order.metadata ?? {};
   const storeName = clean(order.resolved_store_name || metadata.storeName || metadata.store_name || "Tienda");
@@ -98,7 +99,7 @@ async function drawLabel(
     ["TRANSPORTADORA:", "ENKARGORD | LOGISTICA"],
     ["GESTIONADO POR:", "ENKARGORD"],
     ["TIENDA DE VENTA:", storeName],
-    ["TIPO PAGO:", isPrepaid ? "PAGADO" : "CONTRA ENTREGA"],
+    ["TIPO PAGO:", hideAmounts ? "VERIFICADO" : (isPrepaid ? "PAGADO" : "CONTRA ENTREGA")],
   ];
   detailRows.forEach(([label, value], index) => {
     const y = 216 - index * 14;
@@ -106,8 +107,8 @@ async function drawLabel(
     page.drawText(value, { x: 142, y, size: fittedSize(font, value, 7.8, 122, 6), font, color: ink });
   });
   page.drawLine({ start: { x: 22, y: 153 }, end: { x: 266, y: 153 }, thickness: 0.8, dashArray: [3, 2], color: rgb(0.72, 0.77, 0.83) });
-  page.drawText(isPrepaid ? "PAGADO" : "TOTAL A COBRAR (COD)", { x: 22, y: 142, size: 7.5, font: bold, color: ink });
-  const totalText = isPrepaid ? "RD$0.00" : `RD$${totalToCollect.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+  page.drawText(hideAmounts ? "COBRO" : (isPrepaid ? "PAGADO" : "TOTAL A COBRAR (COD)"), { x: 22, y: 142, size: 7.5, font: bold, color: ink });
+  const totalText = hideAmounts ? "***" : (isPrepaid ? "RD$0.00" : `RD$${totalToCollect.toLocaleString("en-US", { minimumFractionDigits: 2 })}`);
   page.drawText(totalText, { x: 190, y: 142, size: fittedSize(bold, totalText, 12, 76), font: bold, color: ink });
 
   page.drawRectangle({ x: 10, y: 76, width: 268, height: 57, color: light, borderWidth: 0.8, borderColor: border });
@@ -133,7 +134,7 @@ async function drawLabel(
   page.drawImage(qr, { x: 218, y: 13, width: 45, height: 45 });
 }
 
-function drawOrderDocument(page: PDFPage, order: Record<string, any>, font: PDFFont, bold: PDFFont) {
+function drawOrderDocument(page: PDFPage, order: Record<string, any>, font: PDFFont, bold: PDFFont, hideAmounts: boolean = false) {
   const metadata = order.metadata ?? {};
   page.drawText("EnkargoRD - Guia de pedido", { x: 42, y: 745, size: 20, font: bold, color: rgb(0.83, 0.07, 0.1) });
   page.drawText(clean(order.tracking), { x: 42, y: 710, size: 17, font: bold });
@@ -147,8 +148,15 @@ function drawOrderDocument(page: PDFPage, order: Record<string, any>, font: PDFF
   field(page, font, bold, "Repartidor", order.courier_name || "No asignado", 320, 315, 220);
   field(page, font, bold, "Estado", order.status, 42, 245, 240);
   field(page, font, bold, "Region logistica", logisticsRegion(order.province_name), 320, 245, 220);
-  page.drawText(`Recaudo: RD$${Number(order.collection_amount || 0).toLocaleString("en-US")}`, { x: 42, y: 155, size: 18, font: bold });
-  page.drawText(`Envio: RD$${Number(order.shipping_cost || 0).toLocaleString("en-US")}`, { x: 42, y: 125, size: 12, font });
+  
+  if (hideAmounts) {
+    page.drawText("Recaudo: ***", { x: 42, y: 155, size: 18, font: bold });
+    page.drawText("Envio: ***", { x: 42, y: 125, size: 12, font });
+  } else {
+    page.drawText(`Recaudo: RD$${Number(order.collection_amount || 0).toLocaleString("en-US")}`, { x: 42, y: 155, size: 18, font: bold });
+    page.drawText(`Envio: RD$${Number(order.shipping_cost || 0).toLocaleString("en-US")}`, { x: 42, y: 125, size: 12, font });
+  }
+  
   page.drawText(`Generado: ${new Date().toLocaleString("es-DO")}`, { x: 42, y: 55, size: 8, font, color: rgb(0.45, 0.5, 0.58) });
 }
 
@@ -171,12 +179,14 @@ export async function POST(request: Request) {
       .select("*")
       .eq("organization_id", profile.organization_id)
       .in("id", ids);
-    if (profile.role === "Tienda") query = query.eq("store_id", profile.store_id);
+    if (profile.role === "Tienda" || profile.role === "Colaborador") query = query.eq("store_id", profile.store_id);
     else if (profile.role === "Motorista") query = query.eq("courier_id", profile.courier_id);
     else if (profile.role !== "Admin") return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const { data: orders, error } = await query.order("created_at", { ascending: true });
     if (error) throw error;
     if (!orders || orders.length !== ids.length) return NextResponse.json({ error: "ORDER_ACCESS_DENIED" }, { status: 403 });
+
+    const isCollaborator = profile.role === "Colaborador";
 
     const storeIds = Array.from(new Set(orders.map((order) => order.store_id).filter(Boolean)));
     const storeNames = new Map<string, string>();
@@ -196,8 +206,8 @@ export async function POST(request: Request) {
     for (const order of orders) {
       const enrichedOrder = { ...order, resolved_store_name: storeNames.get(order.store_id) };
       const page = pdf.addPage(mode === "labels" ? [288, 432] : [612, 792]);
-      if (mode === "labels") await drawLabel(pdf, page, enrichedOrder, font, bold);
-      else drawOrderDocument(page, enrichedOrder, font, bold);
+      if (mode === "labels") await drawLabel(pdf, page, enrichedOrder, font, bold, isCollaborator);
+      else drawOrderDocument(page, enrichedOrder, font, bold, isCollaborator);
     }
     const bytes = await pdf.save();
     const filename = `EnkargoRD-${mode}-${new Date().toISOString().slice(0, 10)}.pdf`;

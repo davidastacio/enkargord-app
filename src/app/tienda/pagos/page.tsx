@@ -62,6 +62,20 @@ export default function StorePayments() {
     );
   }
 
+  if (profile?.role === 'Colaborador') {
+    return (
+      <div className="py-16 text-center space-y-4 max-w-md mx-auto">
+        <div className="w-12 h-12 bg-red-50 text-[#d3121a] rounded-2xl flex items-center justify-center mx-auto">
+          <CreditCard size={24} />
+        </div>
+        <h3 className="font-extrabold text-slate-900 text-base">Acceso Restringido para Colaboradores</h3>
+        <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+          Tu cuenta de colaborador no tiene permisos para ver la información financiera ni las liquidaciones de la tienda.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8 animate-fade-in">
       

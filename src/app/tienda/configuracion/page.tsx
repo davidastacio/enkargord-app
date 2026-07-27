@@ -120,7 +120,21 @@ export default function StoreSettings() {
     return (
       <div className="py-20 text-center flex flex-col items-center justify-center gap-3">
         <Loader2 size={28} className="animate-spin text-[#d3121a]" />
-        <span className="text-xs font-bold text-slate-400">Cargando configuración comercial de la tienda...</span>
+        <span className="text-xs font-bold text-slate-400">Cargando configuración de la tienda...</span>
+      </div>
+    );
+  }
+
+  if (profile?.role === 'Colaborador') {
+    return (
+      <div className="py-16 text-center space-y-4 max-w-md mx-auto">
+        <div className="w-12 h-12 bg-red-50 text-[#d3121a] rounded-2xl flex items-center justify-center mx-auto">
+          <Settings size={24} />
+        </div>
+        <h3 className="font-extrabold text-slate-900 text-base">Acceso Restringido para Colaboradores</h3>
+        <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+          Tu cuenta de colaborador no tiene permisos para modificar la configuración de la tienda.
+        </p>
       </div>
     );
   }

@@ -8,7 +8,7 @@ export interface AdminUserProfile {
   displayName: string;
   email: string;
   phone: string;
-  role: "admin" | "store" | "courier" | "customer";
+  role: "admin" | "store" | "courier" | "customer" | "collaborator";
   status: "active" | "pending" | "suspended" | "inactive";
   createdAt: string;
   lastLoginAt: string;
@@ -23,7 +23,7 @@ type ProfileRow = {
   name: string | null;
   email: string | null;
   phone: string | null;
-  role: "Admin" | "Tienda" | "Motorista" | "Cliente";
+  role: "Admin" | "Tienda" | "Motorista" | "Cliente" | "Colaborador";
   status: AdminUserProfile["status"];
   store_id: string | null;
   courier_id: string | null;
@@ -36,6 +36,7 @@ const ROLE_MAP: Record<ProfileRow["role"], AdminUserProfile["role"]> = {
   Tienda: "store",
   Motorista: "courier",
   Cliente: "customer",
+  Colaborador: "collaborator",
 };
 
 function mapProfile(row: ProfileRow): AdminUserProfile {

@@ -155,12 +155,18 @@ export default function StoreDashboard() {
 
         <div className="bg-white border border-[#E7E7EC] rounded-2xl p-5 flex items-center justify-between shadow-sm">
           <div className="space-y-1">
-            <span className="block text-[10px] font-bold text-slate-400 tracking-wider uppercase">Ingresos por Entregas</span>
-            <span className="block text-3xl font-extrabold text-slate-900">RD${totalSales.toLocaleString()}</span>
-            <span className="text-[10px] text-slate-400 font-bold">Monto completado</span>
+            <span className="block text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+              {profile?.role === 'Colaborador' ? 'Pendientes de Despacho' : 'Ingresos por Entregas'}
+            </span>
+            <span className="block text-3xl font-extrabold text-slate-900">
+              {profile?.role === 'Colaborador' ? pendingCount : `RD$${totalSales.toLocaleString()}`}
+            </span>
+            <span className="text-[10px] text-slate-400 font-bold">
+              {profile?.role === 'Colaborador' ? 'En espera de ruta' : 'Monto completado'}
+            </span>
           </div>
           <div className="w-11 h-11 bg-slate-100 rounded-xl flex items-center justify-center text-slate-700 font-bold">
-            <DollarSign size={20} />
+            {profile?.role === 'Colaborador' ? <Package size={20} /> : <DollarSign size={20} />}
           </div>
         </div>
       </section>
@@ -174,7 +180,7 @@ export default function StoreDashboard() {
             <div className="p-6 border-b border-[#E7E7EC] flex items-center justify-between">
               <div>
                 <h3 className="font-extrabold text-slate-900 text-base">Pedidos Recientes de la Tienda</h3>
-                <p className="text-xs text-slate-400 font-medium">Listado en tiempo real desde Firestore</p>
+                <p className="text-xs text-slate-400 font-medium">Listado en tiempo real desde Supabase</p>
               </div>
               <Link href="/tienda/pedidos" className="text-xs font-extrabold text-[#d3121a] hover:underline flex items-center gap-1">
                 Ver todos <ChevronRight size={14} />
@@ -216,7 +222,9 @@ export default function StoreDashboard() {
                             {order.status === 'delivered' ? 'Entregado' : order.status === 'in_transit' ? 'En ruta' : 'Pendiente'}
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 text-right font-bold text-slate-900">RD${order.amount.toLocaleString()}</td>
+                        <td className="py-3.5 px-4 text-right font-bold text-slate-900">
+                          {profile?.role === 'Colaborador' ? '***' : `RD$${order.amount.toLocaleString()}`}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

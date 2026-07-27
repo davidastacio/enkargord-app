@@ -13,7 +13,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase/client';
 
-export type UserRole = 'Cliente' | 'Tienda' | 'Motorista' | 'Admin';
+export type UserRole = 'Cliente' | 'Tienda' | 'Motorista' | 'Admin' | 'Colaborador';
 
 export interface UserProfile {
   uid: string;
@@ -50,6 +50,7 @@ function roleFromClaim(value: unknown): UserRole | null {
   if (normalized === 'store' || normalized === 'tienda') return 'Tienda';
   if (normalized === 'courier' || normalized === 'motorista') return 'Motorista';
   if (normalized === 'customer' || normalized === 'cliente') return 'Cliente';
+  if (normalized === 'collaborator' || normalized === 'colaborador') return 'Colaborador';
   return null;
 }
 
