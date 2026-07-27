@@ -490,6 +490,12 @@ export default function CreateOrder() {
         shippingCost: activeShippingFee,
         shippingType: shippingType,
         paymentMethod: paymentMethod || null,
+        priceIncludesShipping: true,
+        financialVersion: 2,
+        metadata: {
+          priceIncludesShipping: true,
+          financialVersion: 2,
+        },
         
         requiresFulfillment: false,
         fulfillmentType: null,

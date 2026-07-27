@@ -49,6 +49,7 @@ import {
 import { listSupabaseStoreNames } from '@/lib/supabase/stores';
 import LogoutButton from '@/components/auth/LogoutButton';
 import { downloadOrdersPdf } from '@/lib/orders/pdf-client';
+import { getOrderFinancials } from '@/lib/orders/financials';
 import { logisticsRegion, routeLabel, type LogisticsRegion } from '@/lib/logistics/regions';
 import StoreSettlementPanel from '@/components/admin/StoreSettlementPanel';
 import { MUNICIPAL_DISTRICTS, MUNICIPALITIES, PROVINCES, SECTORS } from '@/data/territory';
@@ -280,9 +281,7 @@ export default function AdminDashboard() {
       const ordersFromSupabase = supabaseOrders.map((rawOrder) => {
         const o = rawOrder as any;
         const storeNameReal = o.storeName || (o.storeId ? (storesMap[o.storeId] || 'Tienda Registrada') : 'Tienda Registrada');
-        const collectionAmt = Number(o.collectionAmount !== undefined ? o.collectionAmount : (o.financials?.totalCollected || o.financials?.productCost || 0));
-        const shippingFee = Number(o.shippingCost !== undefined ? o.shippingCost : (o.financials?.shippingCost || 0));
-        const netStoreAmount = Math.max(0, collectionAmt - shippingFee);
+        const fin = getOrderFinancials(o);
 
         return {
           id: o.id,
@@ -309,13 +308,13 @@ export default function AdminDashboard() {
           municipalityName: o.municipalityName || '',
           fulfillment: o.requiresFulfillment || false,
           financials: {
-            productCost: netStoreAmount,
-            shippingCost: shippingFee,
+            productCost: fin.netStoreAmount,
+            shippingCost: fin.shippingCost,
             fulfillmentCost: 0,
-            totalCollected: collectionAmt,
-            storeOwnerAmount: netStoreAmount,
+            totalCollected: fin.totalCollected,
+            storeOwnerAmount: fin.netStoreAmount,
             creatorCommission: 50,
-            transportadoraCommission: Math.max(0, shippingFee - 50)
+            transportadoraCommission: Math.max(0, fin.shippingCost - 50)
           }
         };
       });

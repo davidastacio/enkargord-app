@@ -14,6 +14,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { deleteSupabaseOrder, subscribeSupabaseOrders } from '@/lib/supabase/orders';
 import { downloadOrdersPdf } from '@/lib/orders/pdf-client';
 import { logisticsRegion } from '@/lib/logistics/regions';
+import { getOrderFinancials } from '@/lib/orders/financials';
 
 interface OrderRow {
   trackingId: string;
@@ -53,6 +54,7 @@ export default function StoreOrdersList() {
       
       const unsubscribe = subscribeSupabaseOrders({ storeId }, (supabaseOrders) => {
         const ordersForStore = supabaseOrders.map((o) => {
+          const fin = getOrderFinancials(o);
           return {
             trackingId: String(o.tracking || o.id),
             customerName: String(o.customerName || 'Cliente'),
@@ -60,9 +62,9 @@ export default function StoreOrdersList() {
             address: o.formattedAddress || o.street || 'Sin dirección',
             packageType: String(o.packageType || 'Paquete'),
             status: o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending',
-            amount: Number(o.collectionAmount || 0),
-            shippingCost: Number(o.shippingCost || 0),
-            netAmount: Math.max(0, Number(o.collectionAmount || 0) - Number(o.shippingCost || 0)),
+            amount: fin.totalCollected,
+            shippingCost: fin.shippingCost,
+            netAmount: fin.netStoreAmount,
             courierName: String(o.courierName || 'No asignado'),
             date: o.createdAt ? o.createdAt.split('T')[0] : 'Hoy',
             provinceName: String(o.provinceName || 'Sin provincia'),

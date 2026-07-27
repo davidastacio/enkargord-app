@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getAdminAuth } from "@/lib/firebase/admin";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getOrderFinancials } from "@/lib/orders/financials";
 
 async function adminContext(request: Request) {
   const authorization = request.headers.get("authorization") ?? "";
@@ -52,11 +53,11 @@ export async function GET(request: Request) {
         phone: store.phone || "",
         orderCount: pendingOrders.length,
         productBalance: pendingOrders.reduce(
-          (sum, order) => sum + Math.max(0, Number(order.collection_amount || 0) - Number(order.shipping_cost || 0)),
+          (sum, order) => sum + getOrderFinancials(order).netStoreAmount,
           0,
         ),
         shippingTotal: pendingOrders.reduce(
-          (sum, order) => sum + Number(order.shipping_cost || 0),
+          (sum, order) => sum + getOrderFinancials(order).shippingCost,
           0,
         ),
         bank: {
@@ -106,14 +107,17 @@ export async function POST(request: Request) {
     if (!orders?.length) return NextResponse.json({ error: "NO_PENDING_BALANCE" }, { status: 409 });
 
     const totalCollected = orders.reduce(
-      (sum, order) => sum + Number(order.collection_amount || 0),
+      (sum, order) => sum + getOrderFinancials(order).totalCollected,
       0,
     );
     const shippingAmount = orders.reduce(
-      (sum, order) => sum + Number(order.shipping_cost || 0),
+      (sum, order) => sum + getOrderFinancials(order).shippingCost,
       0,
     );
-    const netAmountToStore = Math.max(0, totalCollected - shippingAmount);
+    const netAmountToStore = orders.reduce(
+      (sum, order) => sum + getOrderFinancials(order).netStoreAmount,
+      0,
+    );
 
     const now = new Date().toISOString();
     const settlementId = `SET-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;

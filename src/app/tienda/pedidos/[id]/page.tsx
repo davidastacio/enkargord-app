@@ -25,6 +25,7 @@ import {
   subscribeSupabaseOrder,
   subscribeSupabaseOrderEvents,
 } from '@/lib/supabase/orders';
+import { getOrderFinancials } from '@/lib/orders/financials';
 
 interface OrderEvent {
   id: string;
@@ -117,9 +118,10 @@ export default function StoreOrderDetailPage() {
   }
 
   const trackingCode = order.tracking || order.trackingId || order.id;
-  const collectionAmt = order.collectionAmount || 0;
-  const shippingFee = order.shippingCost || 0;
-  const netStorePayout = Math.max(0, collectionAmt - shippingFee);
+  const fin = getOrderFinancials(order);
+  const collectionAmt = fin.totalCollected;
+  const shippingFee = fin.shippingCost;
+  const netStorePayout = fin.netStoreAmount;
 
   return (
     <div className="space-y-8 animate-fade-in max-w-5xl">

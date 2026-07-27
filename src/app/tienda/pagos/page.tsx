@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { CreditCard, DollarSign, ArrowUpRight, ArrowDownRight, Loader2, Package } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { subscribeSupabaseOrders } from '@/lib/supabase/orders';
+import { getOrderFinancials } from '@/lib/orders/financials';
 
 interface PaymentRow {
   date: string;
@@ -41,18 +42,18 @@ export default function StorePayments() {
   const pendingSettlementOrders = orders.filter(o => o.status === 'delivered' && o.settlementStatus !== 'settled');
 
   const pendingStoreAmount = pendingSettlementOrders.reduce(
-    (sum, o) => sum + Math.max(0, (o.collectionAmount || 0) - (o.shippingCost || 0)),
+    (sum, o) => sum + getOrderFinancials(o).netStoreAmount,
     0
   );
-  const totalShippingFees = orders.reduce((sum, o) => sum + (o.shippingCost || 0), 0);
-  const totalCodCollected = deliveredOrders.reduce((sum, o) => sum + (o.collectionAmount || 0), 0);
+  const totalShippingFees = orders.reduce((sum, o) => sum + getOrderFinancials(o).shippingCost, 0);
+  const totalCodCollected = deliveredOrders.reduce((sum, o) => sum + getOrderFinancials(o).totalCollected, 0);
 
   // Generate dynamic transactions list from orders
   const payments: PaymentRow[] = deliveredOrders.map(o => ({
     date: o.deliveredAt ? o.deliveredAt.split('T')[0] : (o.createdAt ? o.createdAt.split('T')[0] : 'Hoy'),
     reference: `LIQ-${o.tracking || o.id.slice(0, 6)}`,
     type: 'Liquidación',
-    amount: Math.max(0, (o.collectionAmount || 0) - (o.shippingCost || 0)),
+    amount: getOrderFinancials(o).netStoreAmount,
     status: o.settlementStatus === 'settled' ? 'Completado' : 'Pendiente'
   }));
 

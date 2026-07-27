@@ -15,6 +15,7 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { useAuth } from '@/hooks/useAuth';
 import { subscribeSupabaseOrders } from '@/lib/supabase/orders';
+import { getOrderFinancials } from '@/lib/orders/financials';
 
 interface OrderRow {
   id: string;
@@ -52,9 +53,7 @@ export default function StoreDashboard() {
           const timeString = o.createdAt 
             ? new Date(o.createdAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })
             : 'N/A';
-          const collectionAmt = Number(o.collectionAmount || 0);
-          const shippingFee = Number(o.shippingCost || 0);
-          const netAmt = Math.max(0, collectionAmt - shippingFee);
+          const fin = getOrderFinancials(o);
 
           return {
             id: o.id,
@@ -63,9 +62,9 @@ export default function StoreDashboard() {
             customerPhone: o.customerPhone || '',
             address: o.formattedAddress || o.street || 'Sin dirección',
             status: (o.status === 'in_transit' || o.status === 'on_route' ? 'in_transit' : o.status === 'delivered' ? 'delivered' : 'pending') as OrderRow['status'],
-            amount: collectionAmt,
-            shippingCost: shippingFee,
-            netAmount: netAmt,
+            amount: fin.totalCollected,
+            shippingCost: fin.shippingCost,
+            netAmount: fin.netStoreAmount,
             courierName: o.courierName || 'No asignado',
             time: timeString
           };
