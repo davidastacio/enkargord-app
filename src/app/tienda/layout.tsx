@@ -45,10 +45,10 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
     { name: 'Mis Pedidos', href: '/tienda/pedidos', icon: ListOrdered },
     { name: 'Seguimiento', href: '/tienda/seguimiento', icon: Map },
     { name: 'Clientes', href: '/tienda/clientes', icon: Users },
-    { name: 'Reportes', href: '/tienda/reportes', icon: BarChart2 },
   ];
 
   const storeOnlyItems = [
+    { name: 'Reportes', href: '/tienda/reportes', icon: BarChart2 },
     { name: 'Mi Equipo', href: '/tienda/equipo', icon: Users },
     { name: 'Pagos y Cobros', href: '/tienda/pagos', icon: CreditCard },
     { name: 'Configuración', href: '/tienda/configuracion', icon: Settings },
