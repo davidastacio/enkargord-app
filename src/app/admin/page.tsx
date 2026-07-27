@@ -744,7 +744,7 @@ export default function AdminDashboard() {
   // Outstanding cash (recaudo) in transit or pending in street
   const statCajaCalle = orders
     .filter(o => o.status !== 'delivered' && o.status !== 'cancelled' && o.status !== 'no_contesta')
-    .reduce((sum, o) => sum + (o.financials.productCost || 0), 0);
+    .reduce((sum, o) => sum + (o.financials.totalCollected || 0), 0);
 
   // Donut Graph data format for Recharts
   const donutData = [

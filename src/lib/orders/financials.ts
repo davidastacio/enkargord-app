@@ -18,13 +18,13 @@ export function getOrderFinancials(order: any): OrderFinancials {
   const collectionAmt = Number(order.collectionAmount || order.financials?.totalCollected || 0);
   const shippingFee = Number(order.shippingCost || order.financials?.shippingCost || 0);
   
-  // Check if order was created with new inclusive shipping logic
+  // Only orders explicitly created with priceIncludesShipping or financialVersion === 2 use the new subtraction logic.
+  // All existing/historical orders created previously will default to false and preserve their original sum calculation.
   const isNewLogic = 
     order.priceIncludesShipping === true ||
     order.metadata?.priceIncludesShipping === true ||
     order.financialVersion === 2 ||
-    (typeof order.id === 'string' && order.id.includes('-7VA8N')) ||
-    (order.createdAt && new Date(order.createdAt).getTime() >= 1785182400000); // July 27 2026 20:00 UTC
+    (typeof order.id === 'string' && order.id.includes('-7VA8N'));
 
   if (isNewLogic) {
     // New Order Logic: collectionAmt is Total COD (includes shipping)
@@ -35,7 +35,7 @@ export function getOrderFinancials(order: any): OrderFinancials {
       isNewLogic: true,
     };
   } else {
-    // Historical Order Logic: collectionAmt was net product price
+    // Historical Order Logic: collectionAmt was net product price (SUM SHIPPING)
     return {
       totalCollected: collectionAmt + shippingFee,
       shippingCost: shippingFee,
