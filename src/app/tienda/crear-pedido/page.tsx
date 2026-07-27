@@ -5,18 +5,12 @@ import { useRouter } from 'next/navigation';
 import { 
   User, 
   Phone, 
-  Mail, 
   DollarSign, 
   Clock,
   ArrowLeft,
   ShieldAlert,
-  Calendar,
-  Link2,
-  CheckCircle2,
   X,
   Search,
-  MapPin,
-  HelpCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import DeliveryLocationMap from '@/components/DeliveryLocationMap';
@@ -31,10 +25,6 @@ import {
   SECTORS,
   matchTerritoryName,
   normalizeText,
-  Province,
-  Municipality,
-  MunicipalDistrict,
-  Sector
 } from '@/data/territory';
 
 export default function CreateOrder() {
@@ -72,33 +62,12 @@ export default function CreateOrder() {
   const [locationSource, setLocationSource] = useState<'manual_address' | 'whatsapp' | 'google_maps' | 'coordinates' | 'manual_map'>('manual_address');
   const [locationVerified, setLocationVerified] = useState(false);
 
-  // SECTION 3 — INFORMACIÓN LOGÍSTICA
-  const [packageType, setPackageType] = useState('Paquete pequeño');
-  const [packagesCount, setPackagesCount] = useState('1');
-  const [weight, setWeight] = useState('');
-  const [dimensions, setDimensions] = useState('');
-  const [handling, setHandling] = useState('Ninguna');
-
-  // SECTION 4 — RECAUDO Y PAGO
+  // SECTION 3 — RECAUDO Y PAGO (COD)
   const [requiresCod, setRequiresCod] = useState(true);
   const [collectAmount, setCollectAmount] = useState('1500');
   const [paymentMethod, setPaymentMethod] = useState('Efectivo');
   const [alreadyPaid, setAlreadyPaid] = useState(false);
   const [paymentRef, setPaymentRef] = useState('');
-
-  // SECTION 5 — RECOGIDA
-  const [pickupAddress, setPickupAddress] = useState('Av. Winston Churchill #12, Naco');
-  const [pickupContact, setPickupContact] = useState('Moda Express RD (Encargado de Despacho)');
-  const [pickupPhone, setPickupPhone] = useState('809-555-8888');
-  const [pickupDate, setPickupDate] = useState('');
-  const [pickupTimeSlot, setPickupTimeSlot] = useState('Tarde (12:00 PM - 6:00 PM)');
-  const [pickupNotes, setPickupNotes] = useState('');
-
-  // SECTION 6 — INSTRUCCIONES DE ENTREGA
-  const [courierNotes, setCourierNotes] = useState('');
-  const [authorizedReceiver, setAuthorizedReceiver] = useState('');
-  const [receiverPhone, setReceiverPhone] = useState('');
-  const [observations, setObservations] = useState('');
 
   // UI States
   const [diagCode, setDiagCode] = useState<string | null>(null);
@@ -206,7 +175,6 @@ export default function CreateOrder() {
       setLocationVerified(true);
       triggerToast("Ubicación cargada correctamente.");
     } catch (err: any) {
-      // Non-blocking warning instead of error blocking
       setLocationStatus('warning');
       setLocationError(err.message || "No pudimos identificar automáticamente el sector. Selecciónalo o escríbelo manualmente.");
     } finally {
@@ -389,51 +357,34 @@ export default function CreateOrder() {
     const flowId = `ORD-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
     setDiagCode(flowId);
     const t0 = performance.now();
-    console.log(`[Diagnostic] flowId=${flowId} etapa=order-submit-start timestamp=${new Date().toISOString()}`);
 
     const provName = PROVINCES.find(p => p.id === selectedProvId)?.name || '';
     const munName = MUNICIPALITIES.find(m => m.id === selectedMunId)?.name || '';
     const sectorName = isCustomSector ? sectorSearch : (SECTORS.find(s => s.id === selectedSectorId)?.name || '');
 
-    if (!custName.trim() || !custPhone.trim() || !pickupDate) {
-      console.warn(`[Diagnostic] flowId=${flowId} etapa=order-validation-failed elapsed=${(performance.now() - t0).toFixed(0)}ms msg=Missing required fields`);
-      alert("Por favor rellene los campos obligatorios del envío (Nombre, Teléfono y Fecha de Recogida).");
+    if (!custName.trim() || !custPhone.trim()) {
+      alert("Por favor rellene los campos obligatorios del envío (Nombre y Teléfono del cliente).");
       return;
     }
 
     if (!provName || !munName || !sectorName.trim()) {
-      console.warn(`[Diagnostic] flowId=${flowId} etapa=order-validation-failed elapsed=${(performance.now() - t0).toFixed(0)}ms msg=Missing territorial fields`);
-      alert("Por favor complete los campos obligatorios de Provincia, Municipio y Sector (puede escribirlo manualmente).");
+      alert("Por favor complete los campos obligatorios de Provincia, Municipio y Sector.");
       return;
     }
 
     if (requiresCod) {
       const parsedAmount = parseFloat(collectAmount) || 0;
       if (parsedAmount <= 0) {
-        console.warn(`[Diagnostic] flowId=${flowId} etapa=order-validation-failed elapsed=${(performance.now() - t0).toFixed(0)}ms msg=Invalid COD amount`);
         alert("El monto a recaudar debe ser un valor positivo cuando el cobro contra entrega está activo.");
         return;
       }
     }
-
-    console.log(`[Diagnostic] flowId=${flowId} etapa=order-validation-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-
-    const partialUid = profile?.uid ? `${profile.uid.slice(0, 5)}...` : 'N/A';
-    const storeId = profile?.storeId || profile?.uid || 'STORE_01';
-    console.log(`[Diagnostic] flowId=${flowId} etapa=authenticated-user-found uid=${partialUid} storeId=${storeId} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
 
     setIsLoading(true);
 
     try {
       const localOrders = localStorage.getItem('enkargord_orders');
       const currentOrders = localOrders ? JSON.parse(localOrders) : [];
-
-      const nextNumber = currentOrders.length > 0
-        ? Math.max(...currentOrders.map((o: any) => parseInt(o.trackingId?.split('-')[1]) || 0)) + 1
-        : 1251;
-
-      const pCost = requiresCod ? (parseFloat(collectAmount) || 0) : 0;
-      
       const storeIdReal = profile?.storeId || profile?.uid || "STORE_01";
 
       // Secure and Unique Tracking Code Generation: ENK-YYYYMMDD-XXXXX
@@ -476,10 +427,10 @@ export default function CreateOrder() {
         locationVerified,
         locationSource: locationSource || null,
         
-        packageType: packageType || null,
-        packageQuantity: parseInt(packagesCount) || 1,
-        approximateWeight: weight ? (parseFloat(weight) || null) : null,
-        handlingInstructions: handling || [],
+        packageType: "Paquete pequeño",
+        packageQuantity: 1,
+        approximateWeight: null,
+        handlingInstructions: [],
         
         requiresCashOnDelivery: requiresCod,
         collectionAmount: requiresCod ? (parseFloat(collectAmount) || 0) : 0,
@@ -499,33 +450,14 @@ export default function CreateOrder() {
         updatedAt: new Date().toISOString()
       };
 
-      console.log(`[Diagnostic] flowId=${flowId} etapa=order-payload-created elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-      console.log(`[Diagnostic] flowId=${flowId} etapa=tracking-created tracking=${newOrder.tracking} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
+      await createSupabaseOrder(newOrder);
 
-      // 1. Save to Supabase
-      console.log(`[Diagnostic] flowId=${flowId} etapa=supabase-write-start storeId=${newOrder.storeId} createdByUid=${newOrder.createdByUid} tracking=${newOrder.tracking} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-
-      try {
-        await createSupabaseOrder(newOrder);
-        console.log(`[Diagnostic] flowId=${flowId} etapa=supabase-write-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-      } catch (writeErr: any) {
-        console.error(`[Diagnostic] flowId=${flowId} etapa=supabase-write-failed error=${writeErr?.code || 'unknown'} msg=${writeErr?.message} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-        throw writeErr;
-      }
-
-      // 2. Synchronize Cache in LocalStorage
       const updated = [newOrder, ...currentOrders];
       localStorage.setItem('enkargord_orders', JSON.stringify(updated));
 
       triggerToast("Pedido creado correctamente.");
-
-      console.log(`[Diagnostic] flowId=${flowId} etapa=redirect-start target=/tienda/pedidos/${newOrder.id} elapsed=${(performance.now() - t0).toFixed(0)}ms`);
-      
-      // Delay navigation slightly so toast registers
       router.push(`/tienda/pedidos/${newOrder.id}`);
       router.refresh();
-      
-      console.log(`[Diagnostic] flowId=${flowId} etapa=redirect-success elapsed=${(performance.now() - t0).toFixed(0)}ms`);
     } catch (err: any) {
       console.error("Error creating order in Supabase:", err);
       alert("Error al registrar el pedido en la base de datos: " + (err.message || err));
@@ -743,7 +675,6 @@ export default function CreateOrder() {
                   onChange={(e) => {
                     const id = e.target.value;
                     setSelectedProvId(id);
-                    // Cascade resets
                     const filteredMuns = MUNICIPALITIES.filter(m => m.provinceId === id);
                     if (filteredMuns.length > 0) {
                       setSelectedMunId(filteredMuns[0].id);
@@ -981,86 +912,10 @@ export default function CreateOrder() {
 
           </div>
 
-          {/* SECCIÓN 3 — INFORMACIÓN LOGÍSTICA DEL PAQUETE */}
+          {/* SECCIÓN 3 — RECAUDO Y PAGO (COD) */}
           <div className="space-y-4">
             <h3 className="font-extrabold text-slate-950 text-xs border-b border-slate-100 pb-2 uppercase tracking-wide">
-              3. Información Logística del Paquete
-            </h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Tipo de envío *</label>
-                <select 
-                  value={packageType}
-                  onChange={(e) => setPackageType(e.target.value)}
-                  className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-                >
-                  <option value="Documento">Documento (Cartas, folletos)</option>
-                  <option value="Paquete pequeño">Paquete pequeño (Hasta 5 Lbs)</option>
-                  <option value="Paquete mediano">Paquete mediano (5 Lbs a 15 Lbs)</option>
-                  <option value="Paquete grande">Paquete grande (Más de 15 Lbs)</option>
-                  <option value="Otro">Otro</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Cantidad de paquetes *</label>
-                <input 
-                  type="number" 
-                  required
-                  min="1"
-                  value={packagesCount}
-                  onChange={(e) => setPackagesCount(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Peso aproximado (Lbs - Opcional)</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. 3 Lbs"
-                  value={weight}
-                  onChange={(e) => setWeight(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Dimensiones aprox. (Opcional)</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. 10x10x10 cm"
-                  value={dimensions}
-                  onChange={(e) => setDimensions(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Indicaciones de manipulación</label>
-                <select 
-                  value={handling}
-                  onChange={(e) => setHandling(e.target.value)}
-                  className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-                >
-                  <option value="Ninguna">Ninguna</option>
-                  <option value="Frágil">Frágil</option>
-                  <option value="Mantener vertical">Mantener vertical</option>
-                  <option value="No mojar">No mojar</option>
-                  <option value="Manipular con cuidado">Manipular con cuidado</option>
-                </select>
-              </div>
-            </div>
-
-          </div>
-
-          {/* SECCIÓN 4 — RECAUDO Y PAGO */}
-          <div className="space-y-4">
-            <h3 className="font-extrabold text-slate-950 text-xs border-b border-slate-100 pb-2 uppercase tracking-wide">
-              4. Recaudo y Pago Financiero (COD)
+              3. Recaudo y Pago Financiero (COD)
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
@@ -1131,130 +986,8 @@ export default function CreateOrder() {
 
           </div>
 
-          {/* SECCIÓN 5 — RECOGIDA */}
-          <div className="space-y-4">
-            <h3 className="font-extrabold text-slate-950 text-xs border-b border-slate-100 pb-2 uppercase tracking-wide">
-              5. Parámetros de Recogida (Tienda)
-            </h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Dirección de recogida</label>
-                <input 
-                  type="text" 
-                  disabled
-                  value={pickupAddress}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-[#E7E7EC] rounded-xl text-xs font-semibold text-slate-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Persona de contacto</label>
-                <input 
-                  type="text" 
-                  disabled
-                  value={pickupContact}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-[#E7E7EC] rounded-xl text-xs font-semibold text-slate-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Teléfono de contacto</label>
-                <input 
-                  type="text" 
-                  disabled
-                  value={pickupPhone}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-[#E7E7EC] rounded-xl text-xs font-semibold text-slate-400 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Fecha de recogida preferida *</label>
-                <div className="relative">
-                  <Calendar size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input 
-                    type="date" 
-                    required
-                    value={pickupDate}
-                    onChange={(e) => setPickupDate(e.target.value)}
-                    className="w-full pl-11 pr-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Franja horaria preferida</label>
-                <select 
-                  value={pickupTimeSlot}
-                  onChange={(e) => setPickupTimeSlot(e.target.value)}
-                  className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-                >
-                  <option value="Mañana (8:00 AM - 12:00 PM)">Mañana (8:00 AM - 12:00 PM)</option>
-                  <option value="Tarde (12:00 PM - 6:00 PM)">Tarde (12:00 PM - 6:00 PM)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Notas para la recogida</label>
-              <input 
-                type="text" 
-                placeholder="Ej. Recoger por la puerta trasera de carga"
-                value={pickupNotes}
-                onChange={(e) => setPickupNotes(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-              />
-            </div>
-
-          </div>
-
-          {/* SECCIÓN 6 — INSTRUCCIONES DE ENTREGA */}
-          <div className="space-y-4">
-            <h3 className="font-extrabold text-slate-950 text-xs border-b border-slate-100 pb-2 uppercase tracking-wide">
-              6. Instrucciones y Recepción en Destino
-            </h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Persona autorizada a recibir</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. Conserje o pariente cercano"
-                  value={authorizedReceiver}
-                  onChange={(e) => setAuthorizedReceiver(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Teléfono de recepción</label>
-                <input 
-                  type="text" 
-                  placeholder="829-555-9000"
-                  value={receiverPhone}
-                  onChange={(e) => setReceiverPhone(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Instrucciones para el motorista</label>
-              <textarea 
-                placeholder="Ej. Tocar timbre de apartamento 2B o dejar con seguridad"
-                rows={2}
-                value={courierNotes}
-                onChange={(e) => setCourierNotes(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
-              />
-            </div>
-
-          </div>
-
           {/* Action triggers */}
-          <div className="flex gap-4">
+          <div className="flex gap-4 pt-4 border-t border-slate-100">
             <button 
               type="button" 
               onClick={() => router.push('/tienda')}
@@ -1309,16 +1042,6 @@ export default function CreateOrder() {
               </div>
 
               <div className="flex justify-between">
-                <span>Tipo de Paquete:</span>
-                <span className="text-[#d3121a] font-extrabold">{packageType}</span>
-              </div>
-
-              <div className="flex justify-between">
-                <span>Cantidad:</span>
-                <span className="text-slate-900 font-bold">{packagesCount} bulto(s)</span>
-              </div>
-
-              <div className="flex justify-between">
                 <span>Valor del producto:</span>
                 <span className="text-slate-950 font-bold">RD${(requiresCod ? parseFloat(collectAmount) || 0 : 0).toLocaleString()}</span>
               </div>
@@ -1326,11 +1049,6 @@ export default function CreateOrder() {
               <div className="flex justify-between">
                 <span>Método de Pago:</span>
                 <span className="text-slate-900 font-bold">{paymentMethod}</span>
-              </div>
-
-              <div className="flex justify-between">
-                <span>Fecha Recogida:</span>
-                <span className="text-slate-900 font-bold">{pickupDate || "No seleccionada"}</span>
               </div>
 
               <div className="flex justify-between border-t border-slate-100 pt-3 text-sm font-extrabold text-slate-950">
