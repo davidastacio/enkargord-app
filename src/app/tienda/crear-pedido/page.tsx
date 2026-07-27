@@ -445,10 +445,13 @@ export default function CreateOrder() {
       const randomId = Math.random().toString(36).substring(2, 7).toUpperCase();
       const orderTrackingCode = `ENK-${dateStr}-${randomId}`;
 
+      const storeNameResolved = (profile as any)?.storeName || (profile as any)?.commercialName || profile?.name || 'Tienda';
+
       const newOrder = {
         id: orderTrackingCode,
         tracking: orderTrackingCode,
         storeId: storeIdReal,
+        storeName: storeNameResolved,
         createdByUid: user?.uid || profile?.uid || "STORE_01",
         
         customerName: custName,
@@ -491,6 +494,7 @@ export default function CreateOrder() {
         priceIncludesShipping: true,
         financialVersion: 2,
         metadata: {
+          storeName: storeNameResolved,
           priceIncludesShipping: true,
           financialVersion: 2,
         },

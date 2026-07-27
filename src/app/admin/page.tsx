@@ -129,6 +129,18 @@ export default function AdminDashboard() {
   const [couriers, setCouriers] = useState<Courier[]>([]);
   const [storesMap, setStoresMap] = useState<Record<string, string>>({});
   
+  // Re-resolve store names when storesMap loads from database
+  useEffect(() => {
+    if (Object.keys(storesMap).length > 0) {
+      setOrders(prev => prev.map(o => ({
+        ...o,
+        storeName: o.storeName && o.storeName !== 'Tienda' && o.storeName !== 'Tienda Registrada'
+          ? o.storeName
+          : (storesMap[o.storeId] || o.storeName || 'Tienda')
+      })));
+    }
+  }, [storesMap]);
+  
   // Modals States
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
@@ -183,12 +195,18 @@ export default function AdminDashboard() {
     void listSupabaseStoreNames()
       .then(setStoresMap)
       .catch((error) => console.error("Error reading stores in Admin dashboard:", error));
+
     const unsubscribeUsers = () => {};
     // 1. Subscribe to Supabase orders in real-time
     const unsubscribeOrders = subscribeSupabaseOrders({}, (supabaseOrders) => {
       const ordersFromSupabase = supabaseOrders.map((rawOrder) => {
         const o = rawOrder as any;
-        const storeNameReal = o.storeName || (o.storeId ? (storesMap[o.storeId] || 'Tienda Registrada') : 'Tienda Registrada');
+        const storeNameReal =
+          o.storeName ||
+          o.metadata?.storeName ||
+          o.metadata?.store_name ||
+          (o.storeId && storesMap[o.storeId] ? storesMap[o.storeId] : '') ||
+          'Tienda';
         const fin = getOrderFinancials(o);
 
         return {
