@@ -467,12 +467,29 @@ export default function AdminDashboard() {
 
   // Delete test order from Supabase
   const handleDeleteOrder = async (orderId: string, trackingId: string) => {
-    const confirmed = window.confirm(`¿Estás seguro de eliminar el pedido de prueba #${trackingId}? Esta acción lo borrará permanentemente y no afectará la contabilidad.`);
+    const targetId = trackingId || orderId;
+    const confirmed = window.confirm(`¿Estás seguro de eliminar el pedido de prueba #${targetId}? Esta acción lo borrará permanentemente de las rutas y la contabilidad.`);
     if (!confirmed) return;
 
     try {
+      // 1. Immediately update React state for instant UI re-render
+      setOrders((prev) => prev.filter((o) => o.id !== orderId && o.trackingId !== orderId && o.id !== targetId && o.trackingId !== targetId));
+
+      // 2. Clean up local storage cache if present
+      const local = localStorage.getItem('enkargord_orders');
+      if (local) {
+        try {
+          const parsed = JSON.parse(local);
+          const filtered = parsed.filter((o: any) => o.id !== orderId && o.trackingId !== orderId && o.tracking !== orderId && o.id !== targetId && o.trackingId !== targetId);
+          localStorage.setItem('enkargord_orders', JSON.stringify(filtered));
+        } catch (e) {
+          console.error("Error updating local cache:", e);
+        }
+      }
+
+      // 3. Delete order from Supabase
       await deleteSupabaseOrder(orderId);
-      triggerToast(`Pedido #${trackingId} eliminado correctamente.`);
+      triggerToast(`Pedido #${targetId} eliminado correctamente.`);
     } catch (error) {
       console.error("Error deleting order from Supabase:", error);
       alert("Error al eliminar el pedido de la base de datos.");
@@ -772,9 +789,8 @@ export default function AdminDashboard() {
     totalCollectedSum += o.financials.totalCollected;
   });
 
-  const today = new Date().toISOString().slice(0, 10);
   const regionalOrders = orders
-    .filter((order) => order.createdAt.slice(0, 10) === today && !['delivered', 'cancelled', 'returned'].includes(order.status))
+    .filter((order) => !['delivered', 'cancelled', 'returned'].includes(order.status))
     .reduce((groups, order) => {
       const region = logisticsRegion(order.provinceName || '');
       (groups[region] ||= []).push(order);

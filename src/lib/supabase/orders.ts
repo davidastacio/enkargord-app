@@ -205,7 +205,7 @@ export async function deleteSupabaseOrder(orderId: string): Promise<void> {
   const { error } = await getSupabaseBrowserClient()
     .from("orders")
     .delete()
-    .eq("id", orderId);
+    .or(`id.eq.${orderId},tracking.eq.${orderId}`);
   if (error) throw error;
 }
 
