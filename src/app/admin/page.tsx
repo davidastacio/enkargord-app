@@ -206,6 +206,7 @@ export default function AdminDashboard() {
           o.metadata?.storeName ||
           o.metadata?.store_name ||
           (o.storeId && storesMap[o.storeId] ? storesMap[o.storeId] : '') ||
+          (o.createdByUid && storesMap[o.createdByUid] ? storesMap[o.createdByUid] : '') ||
           'Tienda';
         const fin = getOrderFinancials(o);
 

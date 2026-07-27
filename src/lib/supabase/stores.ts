@@ -58,11 +58,28 @@ export async function updateSupabaseStore(
 }
 
 export async function listSupabaseStoreNames(): Promise<Record<string, string>> {
-  const { data, error } = await getSupabaseBrowserClient()
+  const client = getSupabaseBrowserClient();
+  const map: Record<string, string> = {};
+
+  // 1. Fetch from stores table
+  const { data: stores } = await client
     .from("stores")
-    .select("id,commercial_name");
-  if (error) throw error;
-  return Object.fromEntries(
-    (data ?? []).map((store) => [store.id, store.commercial_name || "Tienda"]),
-  );
+    .select("id,commercial_name,owner_uid");
+  for (const s of stores ?? []) {
+    if (s.id) map[s.id] = s.commercial_name || "Tienda";
+    if (s.owner_uid) map[s.owner_uid] = s.commercial_name || "Tienda";
+  }
+
+  // 2. Fetch from user_profiles table for stores and collaborators
+  const { data: profiles } = await client
+    .from("user_profiles")
+    .select("firebase_uid,store_id,name,role");
+  for (const p of profiles ?? []) {
+    if (p.name) {
+      if (p.firebase_uid) map[p.firebase_uid] = p.name;
+      if (p.store_id && !map[p.store_id]) map[p.store_id] = p.name;
+    }
+  }
+
+  return map;
 }
