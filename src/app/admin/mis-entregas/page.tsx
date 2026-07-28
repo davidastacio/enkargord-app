@@ -505,6 +505,12 @@ export default function MisEntregasPage() {
                         {current.formattedAddress || current.street || current.deliveryAddress?.fullAddress || '—'}
                       </p>
                     </div>
+                    <div className="mb-3 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5">
+                      <span className="text-xs text-red-200">Producto:</span>
+                      <span className="ml-2 text-sm font-bold">
+                        {current.productName || current.packageDescription || 'Producto no especificado'}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-3 mb-4">
                       <span className="text-xs text-red-200">Tienda:</span>
                       <span className="text-sm font-bold">{current.storeName || '—'}</span>
@@ -607,6 +613,7 @@ export default function MisEntregasPage() {
                         <th className="py-3 px-4">Tracking</th>
                         <th className="py-3 px-4">Cliente</th>
                         <th className="py-3 px-4">Tienda</th>
+                        <th className="py-3 px-4">Producto</th>
                         <th className="py-3 px-4">Dirección</th>
                         <th className="py-3 px-4">Estado</th>
                         <th className="py-3 px-4 text-right">Acción</th>
@@ -627,6 +634,9 @@ export default function MisEntregasPage() {
                             {order.customerName || order.customer?.name || '—'}
                           </td>
                           <td className="py-3 px-4 text-slate-500">{order.storeName || '—'}</td>
+                          <td className="py-3 px-4 font-semibold text-slate-600">
+                            {order.productName || order.packageDescription || 'Producto no especificado'}
+                          </td>
                           <td className="py-3 px-4 text-slate-500 max-w-xs truncate">
                             {order.formattedAddress || order.street || order.deliveryAddress?.fullAddress || '—'}
                           </td>
