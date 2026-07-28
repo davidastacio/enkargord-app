@@ -75,6 +75,7 @@ export default function MisEntregasPage() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [statusNote, setStatusNote] = useState('');
   const [courierLocation, setCourierLocation] = useState<CourierLocation | null>(null);
 
   // Unified Identifier matching actual user/courier profile
@@ -245,6 +246,11 @@ export default function MisEntregasPage() {
   const handleUpdateStatus = async (newStatus: 'picked_up' | 'in_transit' | 'customer_unreachable' | 'delivered') => {
     const current = routeOrders[currentIdx];
     if (!current || actionLoading) return;
+    const note = statusNote.trim();
+    if ((newStatus === 'delivered' || newStatus === 'customer_unreachable') && !note) {
+      triggerToast('Escribe una nota antes de completar esta acción.');
+      return;
+    }
 
     setActionLoading(true);
     try {
@@ -262,6 +268,10 @@ export default function MisEntregasPage() {
         updatePayload.deliveredAt = nowStr;
         updatePayload.amountCollected = Number(current.collectionAmount || current.financials?.totalCollected || 0);
         updatePayload.collectedAmount = updatePayload.amountCollected;
+        updatePayload.deliveryNote = note;
+      } else if (newStatus === 'customer_unreachable') {
+        updatePayload.unreachableNote = note;
+        updatePayload.lastContactAttemptAt = nowStr;
       }
 
       await updateSupabaseOrder(current.id, updatePayload);
@@ -274,10 +284,13 @@ export default function MisEntregasPage() {
         actorUid: adminCourierId,
         actorRole: 'admin',
         createdAt: nowStr,
-        note: `Estado cambiado a ${STATUS_LABEL[newStatus] || newStatus} en modo repartidor (admin)`,
+        note: (newStatus === 'delivered' || newStatus === 'customer_unreachable')
+          ? `${STATUS_LABEL[newStatus] || newStatus}. Nota del repartidor: ${note}`
+          : `Estado cambiado a ${STATUS_LABEL[newStatus] || newStatus} en modo repartidor (admin)`,
       });
 
       triggerToast(`Estado de ${current.customerName || 'Cliente'} cambiado a: ${STATUS_LABEL[newStatus] || newStatus}`);
+      if (newStatus === 'delivered' || newStatus === 'customer_unreachable') setStatusNote('');
       if (newStatus === 'delivered') setCurrentIdx(0);
     } catch (err) {
       console.error('Error updating status in mis-entregas:', err);
@@ -548,6 +561,18 @@ export default function MisEntregasPage() {
                   </div>
 
                   {/* Action buttons with full status transition support */}
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                      Nota para entrega o intento fallido
+                    </label>
+                    <textarea
+                      value={statusNote}
+                      onChange={(event) => setStatusNote(event.target.value)}
+                      maxLength={500}
+                      placeholder="Ej. Recibió el cliente personalmente / llamé varias veces y no respondió."
+                      className="w-full min-h-20 resize-none rounded-xl border border-[#E7E7EC] px-3 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a]"
+                    />
+                  </div>
                   <div className="grid grid-cols-3 gap-2">
                     {current.status === 'assigned' && (
                       <button

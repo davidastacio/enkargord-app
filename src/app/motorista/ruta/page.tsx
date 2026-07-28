@@ -24,6 +24,8 @@ import WhatsAppContactButton from '@/components/WhatsAppContactButton';
 import { addSupabaseOrderEvent, subscribeSupabaseOrders, updateSupabaseOrder } from '@/lib/supabase/orders';
 import { createSupabaseRoute, subscribeSupabaseActiveRoute, updateSupabaseRoute } from '@/lib/supabase/routes';
 import { buildWazeUrl } from '@/lib/navigation/waze';
+import { orderPoint, prioritizeDeliveryOrders } from '@/lib/logistics/route-priority';
+import { getSupabaseCourierLocation } from '@/lib/supabase/tracking';
 
 const STATUS_BADGE: Record<OrderStatus | string, { label: string; color: string; bg: string }> = {
   pending:           { label: 'Pendiente',        color: 'text-slate-700',   bg: 'bg-slate-100' },
@@ -63,6 +65,7 @@ export default function RutaPage() {
   const [receiverName, setReceiverName] = useState('');
   const [collectedAmount, setCollectedAmount] = useState('');
   const [unreachableNote, setUnreachableNote] = useState('');
+  const [deliveryNote, setDeliveryNote] = useState('');
   const [actionSubmitting, setActionSubmitting] = useState(false);
 
   const triggerToast = (msg: string) => {
@@ -103,9 +106,13 @@ export default function RutaPage() {
   const initializeNewRoute = async () => {
     if (!courierId || orders.length === 0) return;
 
-    const activeOrders = orders
-      .filter(o => ['assigned', 'picked_up', 'in_transit', 'customer_unreachable'].includes(o.status))
-      .map(o => o.id);
+    const activeOrderRecords = orders
+      .filter(o => ['assigned', 'picked_up', 'in_transit', 'customer_unreachable'].includes(o.status));
+    const liveLocation = await getSupabaseCourierLocation(courierId).catch(() => null);
+    const activeOrders = prioritizeDeliveryOrders(
+      activeOrderRecords,
+      liveLocation ? { latitude: liveLocation.latitude, longitude: liveLocation.longitude } : null,
+    ).map(o => o.id);
 
     if (activeOrders.length === 0) return;
 
@@ -171,8 +178,14 @@ export default function RutaPage() {
     e.preventDefault();
     if (!currentOrder || !actionType || !route || actionSubmitting) return;
     const incidentNote = unreachableNote.trim();
+    const completedNote = deliveryNote.trim();
     if (actionType === 'customer_unreachable' && !incidentNote) {
       setErrorAlert('Escribe una nota indicando qué ocurrió con el cliente.');
+      setTimeout(() => setErrorAlert(null), 4000);
+      return;
+    }
+    if (actionType === 'delivered' && !completedNote) {
+      setErrorAlert('Escribe una nota indicando cómo o a quién se entregó.');
       setTimeout(() => setErrorAlert(null), 4000);
       return;
     }
@@ -192,7 +205,8 @@ export default function RutaPage() {
           deliveredByUid: profile?.uid,
           amountCollected: actual,
           collectedAmount: actual,
-          receiverName: receiverName || 'Cliente'
+          receiverName: receiverName || 'Cliente',
+          deliveryNote: completedNote
         } : {
           lastContactAttemptAt: nowStr,
           unreachableReason: 'no_answer',
@@ -208,26 +222,29 @@ export default function RutaPage() {
         actorUid: profile?.uid,
         actorRole: 'courier',
         note: actionType === 'delivered'
-          ? `Entregado a: ${receiverName || 'Cliente'}. RD$${actual} cobrado.`
+          ? `Entregado a: ${receiverName || 'Cliente'}. RD$${actual} cobrado. Nota del motorista: ${completedNote}`
           : `Cliente no contesta. Nota del motorista: ${incidentNote}`,
         createdAt: nowStr
       });
 
       const resolvedOrderId = currentOrder.id;
-      const currentPosition = route.orderIds.indexOf(resolvedOrderId);
-      const nextId =
-        route.orderIds
-          .slice(currentPosition + 1)
-          .find((id: string) => {
-            const candidate = orders.find((order) => order.id === id);
-            return candidate && !['delivered', 'cancelled', 'failed'].includes(candidate.status);
-          }) || null;
+      const resolvedIds = route.orderIds.filter((id: string) => {
+        const candidate = orders.find((order) => order.id === id);
+        return id === resolvedOrderId || !candidate || ['delivered', 'cancelled', 'failed'].includes(candidate.status);
+      });
+      const remainingOrders = orders.filter((order) =>
+        route.orderIds.includes(order.id) &&
+        order.id !== resolvedOrderId &&
+        !['delivered', 'cancelled', 'failed'].includes(order.status)
+      );
+      const prioritizedRemaining = prioritizeDeliveryOrders(remainingOrders, orderPoint(currentOrder));
+      const reorderedIds = [...resolvedIds, ...prioritizedRemaining.map((order) => order.id)];
+      const nextId = prioritizedRemaining[0]?.id || null;
       const nextOrder = nextId ? orders.find((order) => order.id === nextId) : null;
       const routePatch: Record<string, unknown> = {
+        orderIds: reorderedIds,
         currentOrderId: nextId,
-        nextOrderId: nextId
-          ? route.orderIds[route.orderIds.indexOf(nextId) + 1] || null
-          : null,
+        nextOrderId: prioritizedRemaining[1]?.id || null,
         currentProvinceName: nextOrder?.provinceName || '',
         currentMunicipalityName: nextOrder?.municipalityName || '',
         currentSectorName: nextOrder?.sectorName || '',
@@ -260,6 +277,7 @@ export default function RutaPage() {
       setReceiverName('');
       setCollectedAmount('');
       setUnreachableNote('');
+      setDeliveryNote('');
       triggerToast(actionType === 'delivered' ? `✅ Entrega confirmada` : `📵 Reportado: Cliente no contesta`);
     } catch (e) {
       console.error(e);
@@ -486,6 +504,20 @@ export default function RutaPage() {
                   onChange={(e) => setCollectedAmount(e.target.value)}
                   placeholder={String(Number(currentOrder.collectionAmount || 0))}
                   className="w-full px-3 py-2.5 text-xs border border-[#E7E7EC] rounded-xl focus:outline-none font-bold"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                  Nota de entrega *
+                </label>
+                <textarea
+                  required
+                  minLength={3}
+                  maxLength={500}
+                  value={deliveryNote}
+                  onChange={(e) => setDeliveryNote(e.target.value)}
+                  placeholder="Ej. Recibió el cliente personalmente y verificó el paquete."
+                  className="w-full px-3 py-2.5 text-xs border border-[#E7E7EC] rounded-xl focus:outline-none focus:border-emerald-400 h-20 resize-none"
                 />
               </div>
             </div>

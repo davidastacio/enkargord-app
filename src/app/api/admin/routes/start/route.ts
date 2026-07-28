@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminAuth } from "@/lib/firebase/admin";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logisticsRegion, routeLabel } from "@/lib/logistics/regions";
+import { prioritizeDeliveryOrders } from "@/lib/logistics/route-priority";
 
 export async function POST(request: Request) {
   try {
@@ -19,13 +20,25 @@ export async function POST(request: Request) {
 
     const { data: orders, error: ordersError } = await supabase
       .from("orders")
-      .select("id,province_name")
+      .select("id,province_name,municipality_name,sector_name,metadata,route_order")
       .eq("organization_id", profile.organization_id)
       .in("id", orderIds);
     if (ordersError) throw ordersError;
     if (!orders || orders.length !== orderIds.length || orders.some((order) => logisticsRegion(order.province_name) !== region)) {
       return NextResponse.json({ error: "REGION_MISMATCH" }, { status: 409 });
     }
+    const prioritizedOrders = prioritizeDeliveryOrders(
+      orders.map((order) => ({
+        ...order,
+        ...(order.metadata || {}),
+        id: order.id,
+        provinceName: order.province_name,
+        municipalityName: order.municipality_name,
+        sectorName: order.sector_name,
+        routeOrder: order.route_order,
+      })),
+    );
+    const prioritizedOrderIds = prioritizedOrders.map((order) => order.id);
     const now = new Date().toISOString();
     await supabase.from("couriers").upsert({
       id: decoded.uid,
@@ -53,6 +66,13 @@ export async function POST(request: Request) {
       updated_at: now,
     }).eq("organization_id", profile.organization_id).in("id", orderIds);
     if (assignError) throw assignError;
+    const routeOrderResults = await Promise.all(
+      prioritizedOrderIds.map((orderId, index) =>
+        supabase.from("orders").update({ route_order: index + 1 }).eq("id", orderId),
+      ),
+    );
+    const routeOrderError = routeOrderResults.find((result) => result.error)?.error;
+    if (routeOrderError) throw routeOrderError;
     await supabase.from("courier_routes").update({
       status: "cancelled",
       updated_at: now,
@@ -68,7 +88,7 @@ export async function POST(request: Request) {
       courier_id: decoded.uid,
       courier_uid: decoded.uid,
       status: "active",
-      order_ids: orderIds,
+      order_ids: prioritizedOrderIds,
       current_order_index: 0,
       metadata: { region, label, initiatedBy: "admin", createdAt: now },
       created_at: now,

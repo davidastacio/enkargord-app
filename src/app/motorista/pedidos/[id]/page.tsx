@@ -204,6 +204,11 @@ export default function PedidoDetallePage() {
 
   const handleDeliveredSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const completedNote = deliveryNote.trim();
+    if (!completedNote) {
+      alert('Escribe una observación indicando cómo o a quién se entregó.');
+      return;
+    }
 
     const expected = Number(order.collectionAmount || 0);
     const actual = parseFloat(collectedAmount) || 0;
@@ -232,8 +237,8 @@ export default function PedidoDetallePage() {
       collectedAmount: actual,
       collectionPaymentMethod: paymentMethod,
       receiverName: receiverName || 'Cliente',
-      deliveryNote: deliveryNote || ''
-    }, `Entregado a: ${receiverName || 'Cliente'}. Monto cobrado: RD$${actual}`);
+      deliveryNote: completedNote
+    }, `Entregado a: ${receiverName || 'Cliente'}. Monto cobrado: RD$${actual}. Nota del motorista: ${completedNote}`);
 
     setShowDeliveredModal(false);
     setReceiverName('');
@@ -620,9 +625,12 @@ export default function PedidoDetallePage() {
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
-                  Observación de entrega
+                  Observación de entrega *
                 </label>
                 <textarea
+                  required
+                  minLength={3}
+                  maxLength={500}
                   value={deliveryNote}
                   onChange={(e) => setDeliveryNote(e.target.value)}
                   placeholder="Detalle adicional sobre la entrega (ej: se dejó en recepción)..."

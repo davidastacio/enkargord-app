@@ -84,7 +84,9 @@ export async function updateSupabaseRoute(
     .eq("id", routeId)
     .single();
   if (readError) throw readError;
-  const orderIds = Array.isArray(current.order_ids) ? current.order_ids : [];
+  const orderIds = Array.isArray(patch.orderIds)
+    ? patch.orderIds.filter((id): id is string => typeof id === "string")
+    : Array.isArray(current.order_ids) ? current.order_ids : [];
   const currentOrderId =
     typeof patch.currentOrderId === "string" ? patch.currentOrderId : null;
   const columns: Record<string, unknown> = {
@@ -95,6 +97,7 @@ export async function updateSupabaseRoute(
         : new Date().toISOString(),
   };
   if (typeof patch.status === "string") columns.status = patch.status;
+  if (Array.isArray(patch.orderIds)) columns.order_ids = orderIds;
   if (currentOrderId) {
     columns.current_order_index = Math.max(0, orderIds.indexOf(currentOrderId));
   }
