@@ -20,6 +20,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { createSupabaseOrder } from '@/lib/supabase/orders';
 import { getOperationSettings } from '@/lib/supabase/operations';
 import { getStoreProducts, saveStoreProduct, type StoreProductItem } from '@/lib/supabase/products';
+import { getSupabaseStore } from '@/lib/supabase/stores';
 import { DEFAULT_PRICING, type PricingSettings } from '@/data/courier';
 import {
   PROVINCES,
@@ -445,7 +446,12 @@ export default function CreateOrder() {
       const randomId = Math.random().toString(36).substring(2, 7).toUpperCase();
       const orderTrackingCode = `ENK-${dateStr}-${randomId}`;
 
-      const storeNameResolved = (profile as any)?.storeName || (profile as any)?.commercialName || profile?.name || 'Tienda';
+      const storeRecord = await getSupabaseStore(storeIdReal);
+      const storeNameResolved =
+        storeRecord?.commercialName ||
+        (profile as any)?.storeName ||
+        (profile as any)?.commercialName ||
+        'Tienda';
 
       const newOrder = {
         id: orderTrackingCode,

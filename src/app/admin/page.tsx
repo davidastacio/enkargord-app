@@ -122,6 +122,7 @@ export default function AdminDashboard() {
   const router = useRouter();
   const { profile, user } = useAuth();
   const migrationTriggeredRef = useRef(false);
+  const storeNameCorrectionsRef = useRef(new Set<string>());
   // Navigation State
   const [activeTab, setActiveTab] = useState<'dispatch' | 'fleet' | 'settlement'>('dispatch');
   const [activeSidebarMenu, setActiveSidebarMenu] = useState<'dashboard' | 'fleet' | 'settlement' | 'config'>('dashboard');
@@ -132,17 +133,35 @@ export default function AdminDashboard() {
   const [couriers, setCouriers] = useState<Courier[]>([]);
   const [storesMap, setStoresMap] = useState<Record<string, string>>({});
   
-  // Re-resolve store names when storesMap loads from database
+  // Always resolve the commercial store name by storeId. A collaborator's
+  // personal profile name must never replace the store name on an order.
   useEffect(() => {
-    if (Object.keys(storesMap).length > 0) {
-      setOrders(prev => prev.map(o => ({
-        ...o,
-        storeName: o.storeName && o.storeName !== 'Tienda' && o.storeName !== 'Tienda Registrada'
-          ? o.storeName
-          : (storesMap[o.storeId] || o.storeName || 'Tienda')
-      })));
+    if (Object.keys(storesMap).length === 0 || orders.length === 0) return;
+    const mismatches = orders.filter((order) => {
+      const commercialName = storesMap[order.storeId];
+      return Boolean(commercialName && commercialName !== order.storeName);
+    });
+    if (mismatches.length === 0) return;
+
+    setOrders((currentOrders) => currentOrders.map((order) => ({
+      ...order,
+      storeName: storesMap[order.storeId] || order.storeName || 'Tienda',
+    })));
+
+    for (const order of mismatches) {
+      const commercialName = storesMap[order.storeId];
+      const correctionKey = `${order.id}:${commercialName}`;
+      if (!commercialName || storeNameCorrectionsRef.current.has(correctionKey)) continue;
+      storeNameCorrectionsRef.current.add(correctionKey);
+      void updateSupabaseOrder(order.id, {
+        storeName: commercialName,
+        updatedAt: new Date().toISOString(),
+      }).catch((error) => {
+        storeNameCorrectionsRef.current.delete(correctionKey);
+        console.error('Error correcting collaborator store name:', error);
+      });
     }
-  }, [storesMap]);
+  }, [orders, storesMap]);
   
   // Modals States
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
@@ -341,6 +360,7 @@ export default function AdminDashboard() {
         courierId: courierId,
         courierUid: courierUid || courierId,
         courierName: courierName,
+        storeName: (targetOrder && storesMap[targetOrder.storeId]) || targetOrder?.storeName || 'Tienda',
         courierType: selectedCourier?.operationalType || 'courier',
         assignedByUid: profile?.uid || 'ADMIN',
         assignedAt: new Date().toISOString(),
