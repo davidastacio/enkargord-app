@@ -59,7 +59,7 @@ export const PROVINCES: Province[] = [
   { id: 'PROV_VA', name: 'Valverde' }
 ];
 
-// Municipalities (155)
+// Municipalities (158, including Santo Domingo de Guzmán in Distrito Nacional)
 export const MUNICIPALITIES: Municipality[] = [
   // Distrito Nacional
   { id: 'MUN_DN_01', provinceId: 'PROV_DN', name: 'Distrito Nacional' },
@@ -129,6 +129,7 @@ export const MUNICIPALITIES: Municipality[] = [
   { id: 'MUN_ES_02', provinceId: 'PROV_ES', name: 'Cayetano Germosén' },
   { id: 'MUN_ES_03', provinceId: 'PROV_ES', name: 'Gaspar Hernández' },
   { id: 'MUN_ES_04', provinceId: 'PROV_ES', name: 'Jamao al Norte' },
+  { id: 'MUN_ES_05', provinceId: 'PROV_ES', name: 'San Víctor' },
 
   // Hato Mayor
   { id: 'MUN_HM_01', provinceId: 'PROV_HM', name: 'Hato Mayor del Rey' },
@@ -196,6 +197,7 @@ export const MUNICIPALITIES: Municipality[] = [
   // Peravia
   { id: 'MUN_PR_01', provinceId: 'PROV_PR', name: 'Baní' },
   { id: 'MUN_PR_02', provinceId: 'PROV_PR', name: 'Nizao' },
+  { id: 'MUN_PR_03', provinceId: 'PROV_PR', name: 'Matanzas' },
 
   // Puerto Plata
   { id: 'MUN_PP_01', provinceId: 'PROV_PP', name: 'Puerto Plata' },
@@ -260,6 +262,7 @@ export const MUNICIPALITIES: Municipality[] = [
   { id: 'MUN_STG_07', provinceId: 'PROV_STG', name: 'San José de las Matas' },
   { id: 'MUN_STG_08', provinceId: 'PROV_STG', name: 'Tamboril' },
   { id: 'MUN_STG_09', provinceId: 'PROV_STG', name: 'Villa González' },
+  { id: 'MUN_STG_10', provinceId: 'PROV_STG', name: 'Baitoa' },
 
   // Santiago Rodríguez
   { id: 'MUN_SRod_01', provinceId: 'PROV_SRod', name: 'San Ignacio de Sabaneta' },
@@ -281,7 +284,7 @@ export const MUNICIPALITIES: Municipality[] = [
   { id: 'MUN_VA_03', provinceId: 'PROV_VA', name: 'Laguna Salada' }
 ];
 
-// Municipal Districts (228)
+// Municipal Districts (235)
 export const MUNICIPAL_DISTRICTS: MunicipalDistrict[] = [
   // Azua
   { id: 'DM_AZ_01', municipalityId: 'MUN_AZ_01', name: 'Barreras' },
@@ -292,7 +295,7 @@ export const MUNICIPAL_DISTRICTS: MunicipalDistrict[] = [
   { id: 'DM_AZ_06', municipalityId: 'MUN_AZ_01', name: 'Las Lomas' },
   { id: 'DM_AZ_07', municipalityId: 'MUN_AZ_01', name: 'Los Jovillos' },
   { id: 'DM_AZ_08', municipalityId: 'MUN_AZ_01', name: 'Puerto Viejo' },
-  { id: 'DM_AZ_09', municipalityId: 'MUN_AZ_04', name: 'Hatillo' },
+  { id: 'DM_AZ_09', municipalityId: 'MUN_AZ_06', name: 'Monte Bonito' },
   { id: 'DM_AZ_10', municipalityId: 'MUN_AZ_04', name: 'Palmar de Ocoa' },
   { id: 'DM_AZ_11', municipalityId: 'MUN_AZ_05', name: 'Villarpando' },
   { id: 'DM_AZ_12', municipalityId: 'MUN_AZ_05', name: 'Hato Nuevo-Cortés' },
@@ -374,7 +377,6 @@ export const MUNICIPAL_DISTRICTS: MunicipalDistrict[] = [
   { id: 'DM_ES_05', municipalityId: 'MUN_ES_01', name: 'La Ortega' },
   { id: 'DM_ES_06', municipalityId: 'MUN_ES_01', name: 'Las Lagunas' },
   { id: 'DM_ES_07', municipalityId: 'MUN_ES_01', name: 'Monte de la Jagua' },
-  { id: 'DM_ES_08', municipalityId: 'MUN_ES_01', name: 'San Víctor' },
   { id: 'DM_ES_09', municipalityId: 'MUN_ES_03', name: 'Joba Arriba' },
   { id: 'DM_ES_10', municipalityId: 'MUN_ES_03', name: 'Veragua' },
   { id: 'DM_ES_11', municipalityId: 'MUN_ES_03', name: 'Villa Magante' },
@@ -411,6 +413,8 @@ export const MUNICIPAL_DISTRICTS: MunicipalDistrict[] = [
   // La Vega
   { id: 'DM_LV_01', municipalityId: 'MUN_LV_01', name: 'El Ranchito' },
   { id: 'DM_LV_02', municipalityId: 'MUN_LV_01', name: 'Río Verde Arriba' },
+  { id: 'DM_LV_08', municipalityId: 'MUN_LV_01', name: 'Taveras' },
+  { id: 'DM_LV_09', municipalityId: 'MUN_LV_01', name: 'Don Juan Rodríguez' },
   { id: 'DM_LV_03', municipalityId: 'MUN_LV_02', name: 'La Sabina' },
   { id: 'DM_LV_04', municipalityId: 'MUN_LV_02', name: 'Tireo' },
   { id: 'DM_LV_05', municipalityId: 'MUN_LV_03', name: 'Buena Vista' },
@@ -439,6 +443,7 @@ export const MUNICIPAL_DISTRICTS: MunicipalDistrict[] = [
   { id: 'DM_MC_02', municipalityId: 'MUN_MC_03', name: 'Cana Chapetón' },
   { id: 'DM_MC_03', municipalityId: 'MUN_MC_03', name: 'Hatillo Palma' },
   { id: 'DM_MC_04', municipalityId: 'MUN_MC_03', name: 'Villa Elisa' },
+  { id: 'DM_MC_05', municipalityId: 'MUN_MC_05', name: 'Santa María' },
 
   // Monte Plata
   { id: 'DM_MP_01', municipalityId: 'MUN_MP_01', name: 'Boyá' },
@@ -447,6 +452,7 @@ export const MUNICIPAL_DISTRICTS: MunicipalDistrict[] = [
   { id: 'DM_MP_04', municipalityId: 'MUN_MP_04', name: 'Gonzalo' },
   { id: 'DM_MP_05', municipalityId: 'MUN_MP_04', name: 'Majagual' },
   { id: 'DM_MP_06', municipalityId: 'MUN_MP_05', name: 'Los Botados' },
+  { id: 'DM_MP_07', municipalityId: 'MUN_MP_05', name: 'Mamá Tingó' },
 
   // Pedernales
   { id: 'DM_PE_01', municipalityId: 'MUN_PE_01', name: 'José Francisco Peña Gómez' },
@@ -457,7 +463,6 @@ export const MUNICIPAL_DISTRICTS: MunicipalDistrict[] = [
   { id: 'DM_PR_02', municipalityId: 'MUN_PR_01', name: 'El Carretón' },
   { id: 'DM_PR_03', municipalityId: 'MUN_PR_01', name: 'El Limonal' },
   { id: 'DM_PR_04', municipalityId: 'MUN_PR_01', name: 'Las Barías' },
-  { id: 'DM_PR_05', municipalityId: 'MUN_PR_01', name: 'Matanzas' },
   { id: 'DM_PR_06', municipalityId: 'MUN_PR_01', name: 'Paya' },
   { id: 'DM_PR_07', municipalityId: 'MUN_PR_01', name: 'Sabana Buey' },
   { id: 'DM_PR_08', municipalityId: 'MUN_PR_01', name: 'Villa Fundación' },
@@ -486,11 +491,14 @@ export const MUNICIPAL_DISTRICTS: MunicipalDistrict[] = [
 
   // San Cristóbal
   { id: 'DM_SC_01', municipalityId: 'MUN_SC_01', name: 'Hato Damas' },
+  { id: 'DM_SC_07', municipalityId: 'MUN_SC_01', name: 'Hatillo' },
   { id: 'DM_SC_02', municipalityId: 'MUN_SC_02', name: 'El Carril' },
+  { id: 'DM_SC_08', municipalityId: 'MUN_SC_02', name: 'Quita Sueño' },
   { id: 'DM_SC_03', municipalityId: 'MUN_SC_03', name: 'Cambita El Pueblecito' },
   { id: 'DM_SC_04', municipalityId: 'MUN_SC_07', name: 'La Cuchilla' },
   { id: 'DM_SC_05', municipalityId: 'MUN_SC_07', name: 'Medina' },
   { id: 'DM_SC_06', municipalityId: 'MUN_SC_07', name: 'San José del Puerto' },
+  { id: 'DM_SC_09', municipalityId: 'MUN_SC_08', name: 'Doña Ana' },
 
   // San José de Ocoa
   { id: 'DM_SJO_01', municipalityId: 'MUN_SJO_01', name: 'El Naranjal' },
@@ -502,12 +510,13 @@ export const MUNICIPAL_DISTRICTS: MunicipalDistrict[] = [
   { id: 'DM_SJ_01', municipalityId: 'MUN_SJ_01', name: 'El Rosario' },
   { id: 'DM_SJ_02', municipalityId: 'MUN_SJ_01', name: 'Guanito' },
   { id: 'DM_SJ_03', municipalityId: 'MUN_SJ_01', name: 'Hato del Padre' },
-  { id: 'DM_SJ_04', municipalityId: 'MUN_SJ_01', name: 'Hato Nuevo' },
+  { id: 'DM_SJ_04', municipalityId: 'MUN_SJ_01', name: 'Las Maguanas-Hato Nuevo' },
   { id: 'DM_SJ_05', municipalityId: 'MUN_SJ_01', name: 'La Jagua' },
   { id: 'DM_SJ_06', municipalityId: 'MUN_SJ_01', name: 'Las Charcas de María Nova' },
   { id: 'DM_SJ_07', municipalityId: 'MUN_SJ_01', name: 'Pedro Corto' },
   { id: 'DM_SJ_08', municipalityId: 'MUN_SJ_01', name: 'Sabana Alta' },
   { id: 'DM_SJ_09', municipalityId: 'MUN_SJ_01', name: 'Sabaneta' },
+  { id: 'DM_SJ_18', municipalityId: 'MUN_SJ_01', name: 'Las Zanjas' },
   { id: 'DM_SJ_10', municipalityId: 'MUN_SJ_02', name: 'Arroyo Cano' },
   { id: 'DM_SJ_11', municipalityId: 'MUN_SJ_02', name: 'Yaque' },
   { id: 'DM_SJ_12', municipalityId: 'MUN_SJ_03', name: 'Batista' },
@@ -525,18 +534,19 @@ export const MUNICIPAL_DISTRICTS: MunicipalDistrict[] = [
   { id: 'DM_SR_01', municipalityId: 'MUN_SR_01', name: 'Caballero' },
   { id: 'DM_SR_02', municipalityId: 'MUN_SR_01', name: 'Comedero Arriba' },
   { id: 'DM_SR_03', municipalityId: 'MUN_SR_01', name: 'Quita Sueño' },
+  { id: 'DM_SR_09', municipalityId: 'MUN_SR_01', name: 'Platanal' },
+  { id: 'DM_SR_10', municipalityId: 'MUN_SR_01', name: 'Zambrana Abajo' },
   { id: 'DM_SR_04', municipalityId: 'MUN_SR_02', name: 'La Cueva' },
-  { id: 'DM_SR_05', municipalityId: 'MUN_SR_02', name: 'Platanal' },
   { id: 'DM_SR_06', municipalityId: 'MUN_SR_04', name: 'Angelina' },
   { id: 'DM_SR_07', municipalityId: 'MUN_SR_04', name: 'La Bija' },
   { id: 'DM_SR_08', municipalityId: 'MUN_SR_04', name: 'Hernando Alonzo' },
 
   // Santiago
-  { id: 'DM_STG_01', municipalityId: 'MUN_STG_01', name: 'Baitoa' },
   { id: 'DM_STG_02', municipalityId: 'MUN_STG_01', name: 'Hato del Yaque' },
   { id: 'DM_STG_03', municipalityId: 'MUN_STG_01', name: 'La Canela' },
   { id: 'DM_STG_04', municipalityId: 'MUN_STG_01', name: 'Pedro García' },
   { id: 'DM_STG_05', municipalityId: 'MUN_STG_01', name: 'San Francisco de Jacagua' },
+  { id: 'DM_STG_17', municipalityId: 'MUN_STG_01', name: 'Santiago Oeste' },
   { id: 'DM_STG_06', municipalityId: 'MUN_STG_03', name: 'El Caimito' },
   { id: 'DM_STG_07', municipalityId: 'MUN_STG_03', name: 'Juncalito' },
   { id: 'DM_STG_08', municipalityId: 'MUN_STG_04', name: 'Las Palomas' },
@@ -642,21 +652,31 @@ export function normalizeText(text: string): string {
     .trim();
 }
 
-export function matchTerritoryName(rawName: string, type: 'province' | 'municipality'): string | null {
+export function matchTerritoryName(
+  rawName: string,
+  type: 'province' | 'municipality',
+  provinceId?: string
+): string | null {
   if (!rawName) return null;
   const normalizedRaw = normalizeText(rawName);
 
-  if (ALIAS_MAP[normalizedRaw]) {
-    return ALIAS_MAP[normalizedRaw];
-  }
+  const aliasedName = ALIAS_MAP[normalizedRaw];
+  const normalizedTarget = normalizeText(aliasedName || rawName);
 
   if (type === 'province') {
-    const match = PROVINCES.find(p => normalizeText(p.name) === normalizedRaw || normalizeText(p.name).includes(normalizedRaw));
+    const match = PROVINCES.find(p =>
+      normalizeText(p.name) === normalizedTarget ||
+      normalizeText(p.name).includes(normalizedTarget)
+    );
     return match ? match.name : null;
   }
 
   if (type === 'municipality') {
-    const match = MUNICIPALITIES.find(m => normalizeText(m.name) === normalizedRaw || normalizeText(m.name).includes(normalizedRaw));
+    const candidates = provinceId
+      ? MUNICIPALITIES.filter(m => m.provinceId === provinceId)
+      : MUNICIPALITIES;
+    const match = candidates.find(m => normalizeText(m.name) === normalizedTarget)
+      || candidates.find(m => normalizeText(m.name).includes(normalizedTarget));
     return match ? match.name : null;
   }
 

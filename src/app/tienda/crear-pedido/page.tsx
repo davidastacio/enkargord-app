@@ -179,18 +179,20 @@ export default function CreateOrder() {
   useEffect(() => {
     const provName = PROVINCES.find(p => p.id === selectedProvId)?.name || '';
     const munName = MUNICIPALITIES.find(m => m.id === selectedMunId)?.name || '';
+    const districtName = MUNICIPAL_DISTRICTS.find(d => d.id === selectedDistId)?.name || '';
     const sectorName = isCustomSector ? sectorSearch : (SECTORS.find(s => s.id === selectedSectorId)?.name || '');
     
     const parts = [];
     if (street) parts.push(street);
     if (streetNumber) parts.push(`#${streetNumber}`);
     if (sectorName) parts.push(sectorName);
+    if (districtName) parts.push(districtName);
     if (munName) parts.push(munName);
     if (provName) parts.push(provName);
     parts.push(country);
 
     setFormattedAddress(parts.join(', '));
-  }, [selectedProvId, selectedMunId, selectedSectorId, sectorSearch, isCustomSector, street, streetNumber]);
+  }, [selectedProvId, selectedMunId, selectedDistId, selectedSectorId, sectorSearch, isCustomSector, street, streetNumber]);
 
   // Resolve Location URL trigger
   const handleResolveLocation = async () => {
@@ -237,12 +239,14 @@ export default function CreateOrder() {
   // Apply reverse geocoded details helper
   const applyGeocodedFields = (details: any) => {
     let warningFound = false;
+    let matchedProvinceId = '';
 
     // 1. Match Province
     if (details.state || details.county) {
       const matchedProv = matchTerritoryName(details.state || details.county, 'province');
       const provObj = PROVINCES.find(p => p.name === matchedProv);
       if (provObj) {
+        matchedProvinceId = provObj.id;
         setSelectedProvId(provObj.id);
       } else {
         warningFound = true;
@@ -251,8 +255,10 @@ export default function CreateOrder() {
 
     // 2. Match Municipality
     if (details.city) {
-      const matchedMun = matchTerritoryName(details.city, 'municipality');
-      const munObj = MUNICIPALITIES.find(m => m.name === matchedMun);
+      const matchedMun = matchTerritoryName(details.city, 'municipality', matchedProvinceId || selectedProvId);
+      const munObj = MUNICIPALITIES.find(
+        m => m.name === matchedMun && (!matchedProvinceId || m.provinceId === matchedProvinceId)
+      );
       if (munObj) {
         setSelectedMunId(munObj.id);
       } else {
@@ -299,6 +305,7 @@ export default function CreateOrder() {
   const handleSearchAddressOnMap = async () => {
     const provName = PROVINCES.find(p => p.id === selectedProvId)?.name || '';
     const munName = MUNICIPALITIES.find(m => m.id === selectedMunId)?.name || '';
+    const municipalDistrict = MUNICIPAL_DISTRICTS.find(d => d.id === selectedDistId)?.name || '';
     const sectorName = isCustomSector ? sectorSearch : (SECTORS.find(s => s.id === selectedSectorId)?.name || '');
 
     if (!street.trim()) {
@@ -316,6 +323,7 @@ export default function CreateOrder() {
         body: JSON.stringify({
           street,
           sector: sectorName,
+          municipalDistrict,
           municipality: munName,
           province: provName,
           country
@@ -757,11 +765,16 @@ export default function CreateOrder() {
                     if (filteredMuns.length > 0) {
                       setSelectedMunId(filteredMuns[0].id);
                       setSelectedDistId('');
+                      setSelectedSectorId('custom');
+                      setSelectedSectorName('');
+                      setSectorSearch('');
+                      setIsCustomSector(true);
                       const matchedSects = SECTORS.filter(s => s.municipalityId === filteredMuns[0].id);
                       if (matchedSects.length > 0) {
                         setSelectedSectorId(matchedSects[0].id);
                         setSelectedSectorName(matchedSects[0].name);
                         setSectorSearch(matchedSects[0].name);
+                        setIsCustomSector(false);
                       }
                     }
                   }}
@@ -783,11 +796,16 @@ export default function CreateOrder() {
                     const id = e.target.value;
                     setSelectedMunId(id);
                     setSelectedDistId('');
+                    setSelectedSectorId('custom');
+                    setSelectedSectorName('');
+                    setSectorSearch('');
+                    setIsCustomSector(true);
                     const matchedSects = SECTORS.filter(s => s.municipalityId === id);
                     if (matchedSects.length > 0) {
                       setSelectedSectorId(matchedSects[0].id);
                       setSelectedSectorName(matchedSects[0].name);
                       setSectorSearch(matchedSects[0].name);
+                      setIsCustomSector(false);
                     }
                   }}
                   className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
@@ -805,11 +823,16 @@ export default function CreateOrder() {
                   onChange={(e) => {
                     const id = e.target.value;
                     setSelectedDistId(id);
+                    setSelectedSectorId('custom');
+                    setSelectedSectorName('');
+                    setSectorSearch('');
+                    setIsCustomSector(true);
                     const matchedSects = SECTORS.filter(s => s.municipalityId === selectedMunId && (!id || s.municipalDistrictId === id));
                     if (matchedSects.length > 0) {
                       setSelectedSectorId(matchedSects[0].id);
                       setSelectedSectorName(matchedSects[0].name);
                       setSectorSearch(matchedSects[0].name);
+                      setIsCustomSector(false);
                     }
                   }}
                   className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"

@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
   try {
-    const { street, sector, municipality, province, country } = await req.json();
+    const { street, sector, municipalDistrict, municipality, province, country } = await req.json();
 
     const queryParts = [];
     if (street) queryParts.push(street);
     if (sector) queryParts.push(sector);
+    if (municipalDistrict) queryParts.push(municipalDistrict);
     if (municipality) queryParts.push(municipality);
     if (province) queryParts.push(province);
     if (country) queryParts.push(country);
