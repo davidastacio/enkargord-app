@@ -14,6 +14,17 @@ export type CourierLocation = {
   updatedAt: string;
 };
 
+const LIVE_LOCATION_MAX_AGE_MS = 2 * 60 * 1000;
+
+export function isLiveCourierLocation(
+  location: CourierLocation | null | undefined,
+  now = Date.now(),
+): location is CourierLocation {
+  if (!location || location.trackingStatus !== "active") return false;
+  const updatedAt = Date.parse(location.updatedAt);
+  return Number.isFinite(updatedAt) && now - updatedAt <= LIVE_LOCATION_MAX_AGE_MS;
+}
+
 type SaveLocation = Omit<CourierLocation, "updatedAt"> & {
   updatedAt?: string;
 };
@@ -43,6 +54,32 @@ const parseLocation = (value: unknown): [number, number] | null => {
   if (typeof value === "string") {
     const match = value.match(/POINT\((-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)\)/i);
     if (match) return [Number(match[1]), Number(match[2])];
+
+    // PostgREST serializes PostGIS geography points as EWKB hexadecimal.
+    if (/^[0-9a-f]+$/i.test(value) && value.length >= 42) {
+      try {
+        const bytes = new Uint8Array(value.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)));
+        const view = new DataView(bytes.buffer);
+        const littleEndian = view.getUint8(0) === 1;
+        const geometryType = view.getUint32(1, littleEndian);
+        if ((geometryType & 0xff) !== 1) return null;
+        const coordinateOffset = (geometryType & 0x20000000) !== 0 ? 9 : 5;
+        const longitude = view.getFloat64(coordinateOffset, littleEndian);
+        const latitude = view.getFloat64(coordinateOffset + 8, littleEndian);
+        if (
+          Number.isFinite(longitude) &&
+          Number.isFinite(latitude) &&
+          longitude >= -180 &&
+          longitude <= 180 &&
+          latitude >= -90 &&
+          latitude <= 90
+        ) {
+          return [longitude, latitude];
+        }
+      } catch {
+        return null;
+      }
+    }
   }
   return null;
 };

@@ -36,11 +36,19 @@ interface MapWrapperProps {
 }
 
 // Controller component to re-center or pan map when coords change
-function MapController({ center }: { center: [number, number] }) {
+function MapController({ couriers }: { couriers: MapWrapperProps['activeCouriers'] }) {
   const map = useMap();
   useEffect(() => {
-    map.panTo(center);
-  }, [center, map]);
+    if (couriers.length === 0) return;
+    if (couriers.length === 1) {
+      map.setView([couriers[0].lat, couriers[0].lng], 16);
+      return;
+    }
+    map.fitBounds(
+      couriers.map((courier) => [courier.lat, courier.lng] as [number, number]),
+      { padding: [45, 45], maxZoom: 16 },
+    );
+  }, [couriers, map]);
   return null;
 }
 
@@ -124,7 +132,7 @@ export default function MapWrapper({ activeCouriers }: MapWrapperProps) {
           </Marker>
         ))}
 
-        <MapController center={centerCoords} />
+        <MapController couriers={activeCouriers} />
       </MapContainer>
     </div>
   );

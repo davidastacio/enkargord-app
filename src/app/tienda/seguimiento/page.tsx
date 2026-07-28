@@ -6,7 +6,7 @@ import MapComponent from '@/components/MapComponent';
 import { useAuth } from '@/hooks/useAuth';
 import WhatsAppContactButton from '@/components/WhatsAppContactButton';
 import { subscribeSupabaseOrders } from '@/lib/supabase/orders';
-import { subscribeSupabaseCourierLocation } from '@/lib/supabase/tracking';
+import { isLiveCourierLocation, subscribeSupabaseCourierLocation } from '@/lib/supabase/tracking';
 
 export default function StoreTracking() {
   const { profile } = useAuth() as any;
@@ -87,7 +87,8 @@ export default function StoreTracking() {
 
   const courierLat = courierLocation?.latitude;
   const courierLng = courierLocation?.longitude;
-  const hasCourierCoords = courierLat && courierLng;
+  const hasCourierCoords = Number.isFinite(courierLat) && Number.isFinite(courierLng);
+  const isCourierLive = hasCourierCoords && isLiveCourierLocation(courierLocation);
 
   const markers: any[] = [];
   if (hasDeliveryCoords) {
@@ -149,14 +150,14 @@ export default function StoreTracking() {
           
           {/* Map View */}
           <div className="bg-white border border-[#E7E7EC] rounded-2xl overflow-hidden shadow-sm h-[360px] relative">
-            {hasCourierCoords || hasDeliveryCoords ? (
+            {isCourierLive ? (
               <MapComponent
                 activeCouriers={[
                   {
                     name: activeOrder?.courierName || 'Motorista',
                     status: activeOrder?.status || 'on_route',
-                    lat: courierLat || deliveryLat,
-                    lng: courierLng || deliveryLng,
+                    lat: courierLat,
+                    lng: courierLng,
                     pendingCount: orders.length,
                   }
                 ]}
@@ -164,7 +165,11 @@ export default function StoreTracking() {
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 text-center p-6 space-y-2">
                 <MapPin size={32} className="text-slate-300" />
-                <p className="text-xs font-bold text-slate-600">El motorista todavía no está compartiendo ubicación en vivo.</p>
+                <p className="text-xs font-bold text-slate-600">
+                  {courierLocation?.trackingStatus === 'paused'
+                    ? 'El motorista pausó temporalmente su ubicación.'
+                    : 'El motorista todavía no está compartiendo ubicación en vivo.'}
+                </p>
                 <p className="text-[11px] text-slate-400">Las coordenadas se actualizarán automáticamente cuando la app del motorista esté activa.</p>
               </div>
             )}
@@ -200,7 +205,9 @@ export default function StoreTracking() {
                 <div>
                   <span className="text-[10px] font-extrabold text-slate-400 uppercase block">Última Actualización</span>
                   <span className="text-slate-800">
-                    {courierLocation?.updatedAt ? new Date(courierLocation.updatedAt).toLocaleTimeString('es-DO') : 'Sin transmisión en vivo'}
+                    {isCourierLive && courierLocation?.updatedAt
+                      ? new Date(courierLocation.updatedAt).toLocaleTimeString('es-DO')
+                      : 'Sin transmisión en vivo'}
                   </span>
                 </div>
                 <div>

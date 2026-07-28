@@ -56,6 +56,7 @@ import { logisticsRegion, routeLabel, type LogisticsRegion } from '@/lib/logisti
 import StoreSettlementPanel from '@/components/admin/StoreSettlementPanel';
 import { MUNICIPAL_DISTRICTS, MUNICIPALITIES, PROVINCES, SECTORS } from '@/data/territory';
 import {
+  isLiveCourierLocation,
   subscribeSupabaseCourierLocations,
   type CourierLocation,
 } from '@/lib/supabase/tracking';
@@ -661,7 +662,7 @@ export default function AdminDashboard() {
 
   // Leaflet format active couriers array mapping directly from couriers database
   const leafletActiveCouriers = courierLocations
-    .filter((location) => location.trackingStatus === 'active')
+    .filter(isLiveCourierLocation)
     .map((location) => {
       const courier = couriers.find((record) => record.id === location.courierId);
       return {
