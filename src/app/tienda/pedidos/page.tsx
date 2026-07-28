@@ -7,11 +7,20 @@ import {
   Copy,
   FileDown,
   Printer,
-  CheckSquare
+  CheckSquare,
+  Pencil,
+  X,
+  Save,
+  Loader2
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
-import { deleteSupabaseOrder, subscribeSupabaseOrders } from '@/lib/supabase/orders';
+import {
+  addSupabaseOrderEvent,
+  deleteSupabaseOrder,
+  subscribeSupabaseOrders,
+  updateSupabaseOrder
+} from '@/lib/supabase/orders';
 import { downloadOrdersPdf } from '@/lib/orders/pdf-client';
 import { logisticsRegion } from '@/lib/logistics/regions';
 import { getOrderFinancials } from '@/lib/orders/financials';
@@ -30,7 +39,17 @@ interface OrderRow {
   date: string;
   provinceName: string;
   region: string;
+  packageDescription: string;
+  reference: string;
+  requiresCashOnDelivery: boolean;
+  settlementStatus: string;
 }
+
+type EditableOrder = Pick<
+  OrderRow,
+  'trackingId' | 'customerName' | 'customerPhone' | 'packageType' |
+  'packageDescription' | 'reference' | 'amount' | 'requiresCashOnDelivery'
+>;
 
 export default function StoreOrdersList() {
   const { profile, user } = useAuth();
@@ -44,6 +63,8 @@ export default function StoreOrdersList() {
   const [dateFilter, setDateFilter] = useState('');
   const [provinceFilter, setProvinceFilter] = useState('Todas');
   const [isDownloading, setIsDownloading] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<EditableOrder | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // Load from Supabase Realtime
   useEffect(() => {
@@ -69,6 +90,10 @@ export default function StoreOrdersList() {
             date: o.createdAt ? o.createdAt.split('T')[0] : 'Hoy',
             provinceName: String(o.provinceName || 'Sin provincia'),
             region: logisticsRegion(String(o.provinceName || '')),
+            packageDescription: String(o.packageDescription || ''),
+            reference: String(o.reference || ''),
+            requiresCashOnDelivery: Boolean(o.requiresCashOnDelivery),
+            settlementStatus: String(o.settlementStatus || 'pending'),
             rawCreatedAt: o.createdAt || ''
           };
         });
@@ -110,6 +135,48 @@ export default function StoreOrdersList() {
 
   const handleDuplicateOrder = (order: OrderRow) => {
     alert(`Duplicando orden de ${order.customerName}. Revisa tu formulario de creación.`);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingOrder || !profile?.uid || isSavingEdit) return;
+    const amount = Number(editingOrder.amount);
+    if (!editingOrder.customerName.trim() || !editingOrder.customerPhone.trim() || !editingOrder.packageType.trim()) {
+      alert('Completa el nombre, teléfono y producto o tipo de paquete.');
+      return;
+    }
+    if (!Number.isFinite(amount) || amount < 0) {
+      alert('El monto debe ser un número válido mayor o igual a cero.');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const updatedAt = new Date().toISOString();
+      await updateSupabaseOrder(editingOrder.trackingId, {
+        customerName: editingOrder.customerName.trim(),
+        customerPhone: editingOrder.customerPhone.trim(),
+        packageType: editingOrder.packageType.trim(),
+        packageDescription: editingOrder.packageDescription.trim(),
+        reference: editingOrder.reference.trim(),
+        collectionAmount: amount,
+        requiresCashOnDelivery: amount > 0,
+        updatedAt
+      });
+      await addSupabaseOrderEvent(editingOrder.trackingId, {
+        type: 'order_corrected',
+        actorUid: profile.uid,
+        actorRole: profile.role || 'Tienda',
+        note: 'La tienda corrigió los datos del pedido.',
+        createdAt: updatedAt
+      });
+      setEditingOrder(null);
+      alert('Pedido actualizado correctamente.');
+    } catch (error) {
+      console.error('Error updating order:', error);
+      alert('No se pudo actualizar el pedido.');
+    } finally {
+      setIsSavingEdit(false);
+    }
   };
 
   // Filter application
@@ -331,6 +398,24 @@ export default function StoreOrdersList() {
                     <td className="py-4 px-6 text-slate-500 font-medium">{o.date}</td>
                     
                     <td className="py-4 px-6 text-right space-x-1.5">
+                      {profile?.role !== 'Colaborador' && o.status !== 'delivered' && o.settlementStatus !== 'settled' && (
+                        <button
+                          onClick={() => setEditingOrder({
+                            trackingId: o.trackingId,
+                            customerName: o.customerName,
+                            customerPhone: o.customerPhone,
+                            packageType: o.packageType,
+                            packageDescription: o.packageDescription,
+                            reference: o.reference,
+                            amount: o.amount,
+                            requiresCashOnDelivery: o.requiresCashOnDelivery
+                          })}
+                          className="p-2 border border-amber-200 rounded-xl bg-amber-50 text-amber-700 inline-flex"
+                          title="Editar pedido"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                      )}
                       <button
                         onClick={() => void handlePdf('labels', [o.trackingId])}
                         className="p-2 border border-blue-200 rounded-xl bg-blue-50 text-blue-700 inline-flex"
@@ -360,6 +445,92 @@ export default function StoreOrdersList() {
           </table>
         </div>
       </section>
+
+      {editingOrder && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/45 backdrop-blur-sm p-4 flex items-center justify-center">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-[#E7E7EC] overflow-hidden">
+            <div className="px-6 py-5 border-b border-[#E7E7EC] flex items-center justify-between">
+              <div>
+                <h3 className="font-extrabold text-slate-950">Corregir pedido</h3>
+                <p className="text-xs text-slate-400 mt-1">#{editingOrder.trackingId}</p>
+              </div>
+              <button
+                type="button"
+                disabled={isSavingEdit}
+                onClick={() => setEditingOrder(null)}
+                className="p-2 rounded-xl hover:bg-slate-100 text-slate-500"
+                aria-label="Cerrar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {[
+                ['Nombre del cliente', 'customerName', 'text'],
+                ['Teléfono', 'customerPhone', 'tel'],
+                ['Producto o tipo de paquete', 'packageType', 'text'],
+                ['Monto a cobrar (RD$)', 'amount', 'number']
+              ].map(([label, field, type]) => (
+                <label key={field} className="space-y-1">
+                  <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">{label}</span>
+                  <input
+                    type={type}
+                    min={field === 'amount' ? '0' : undefined}
+                    step={field === 'amount' ? '0.01' : undefined}
+                    value={editingOrder[field as keyof EditableOrder] as string | number}
+                    onChange={(event) => setEditingOrder(current => current ? {
+                      ...current,
+                      [field]: field === 'amount' ? event.target.valueAsNumber : event.target.value
+                    } : current)}
+                    className="w-full px-4 py-2.5 border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a]"
+                  />
+                </label>
+              ))}
+
+              <label className="space-y-1 sm:col-span-2">
+                <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Descripción del pedido</span>
+                <textarea
+                  rows={3}
+                  value={editingOrder.packageDescription}
+                  onChange={(event) => setEditingOrder({ ...editingOrder, packageDescription: event.target.value })}
+                  className="w-full px-4 py-2.5 border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] resize-none"
+                />
+              </label>
+
+              <label className="space-y-1 sm:col-span-2">
+                <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Referencia de entrega</span>
+                <textarea
+                  rows={2}
+                  value={editingOrder.reference}
+                  onChange={(event) => setEditingOrder({ ...editingOrder, reference: event.target.value })}
+                  className="w-full px-4 py-2.5 border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] resize-none"
+                />
+              </label>
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 border-t border-[#E7E7EC] flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={isSavingEdit}
+                onClick={() => setEditingOrder(null)}
+                className="px-4 py-2.5 border border-[#E7E7EC] bg-white rounded-xl text-xs font-bold text-slate-600"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isSavingEdit}
+                onClick={() => void handleSaveEdit()}
+                className="px-5 py-2.5 bg-[#d3121a] text-white rounded-xl text-xs font-extrabold inline-flex items-center gap-2 disabled:opacity-50"
+              >
+                {isSavingEdit ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Guardar cambios
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

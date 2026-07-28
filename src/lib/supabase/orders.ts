@@ -211,6 +211,13 @@ export async function deleteSupabaseOrder(orderId: string): Promise<void> {
 
 const updateColumn = {
   status: "status",
+  customerName: "customer_name",
+  customerPhone: "customer_phone",
+  packageType: "package_type",
+  packageDescription: "package_description",
+  collectionAmount: "collection_amount",
+  requiresCashOnDelivery: "requires_cash_on_delivery",
+  reference: "reference",
   courierId: "courier_id",
   courierUid: "courier_uid",
   courierName: "courier_name",
