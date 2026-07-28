@@ -75,6 +75,7 @@ interface Order {
   status: 'pending' | 'in_transit' | 'on_route' | 'delivered' | 'no_contesta' | 'cancelled' | 'assigned' | string;
   storeId: string;
   storeName: string;
+  courierId: string;
   courierName: string;
   time: string;
   createdAt: string;
@@ -217,6 +218,7 @@ export default function AdminDashboard() {
           status: o.status || 'pending',
           storeId: o.storeId || 'STORE_01',
           storeName: storeNameReal,
+          courierId: o.courierId || '',
           courierName: o.courierName || 'No asignado',
           time: o.time || (o.createdAt ? new Date(o.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A'),
           createdAt: o.createdAt || new Date().toISOString(),
@@ -666,7 +668,11 @@ export default function AdminDashboard() {
   });
 
   const regionalOrders = orders
-    .filter((order) => !['delivered', 'cancelled', 'returned'].includes(order.status))
+    .filter((order) => (
+      Boolean(order.courierId)
+      && order.courierName !== 'No asignado'
+      && !['pending', 'delivered', 'cancelled', 'returned'].includes(order.status)
+    ))
     .reduce((groups, order) => {
       const region = logisticsRegion(order.provinceName || '');
       (groups[region] ||= []).push(order);
@@ -997,7 +1003,7 @@ export default function AdminDashboard() {
               <section className="space-y-4">
                 <div>
                   <h3 className="font-extrabold text-slate-900">Rutas regionales de hoy</h3>
-                  <p className="text-xs text-slate-400 mt-1">Pedidos agrupados automáticamente por provincia y corredor logístico.</p>
+                  <p className="text-xs text-slate-400 mt-1">Solo pedidos asignados a un motorista y despachados, agrupados por provincia y corredor logístico.</p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {(Object.entries(regionalOrders) as [LogisticsRegion, Order[]][]).map(([region, regionOrders]) => (
@@ -1024,7 +1030,7 @@ export default function AdminDashboard() {
                   ))}
                   {Object.keys(regionalOrders).length === 0 && (
                     <div className="md:col-span-2 xl:col-span-3 bg-white border border-dashed border-slate-200 rounded-2xl p-8 text-center text-sm font-semibold text-slate-400">
-                      No hay pedidos registrados.
+                      No hay pedidos despachados con motorista asignado.
                     </div>
                   )}
                 </div>
