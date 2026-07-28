@@ -176,6 +176,8 @@ export interface CourierOrder {
   courierName: string;
   storeId: string;
   storeName: string;
+  productName: string;
+  packageDescription?: string;
   createdAt: string;               // ISO date
   scheduledAt?: string;            // ISO date (if rescheduled)
 

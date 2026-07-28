@@ -132,6 +132,8 @@ export default function PedidosPage() {
             status: mappedStatus as OrderStatus,
             storeId: o.storeId || 'STORE_01',
             storeName: o.storeName || 'Tienda Enkargo',
+            productName: o.productName || o.packageDescription || 'Producto no especificado',
+            packageDescription: o.packageDescription || '',
             courierId: o.courierId || '',
             courierName: o.courierName || '',
             createdAt: o.createdAt || new Date().toISOString(),
@@ -304,6 +306,11 @@ export default function PedidosPage() {
               <div className="flex items-start gap-2 mb-3">
                 <MapPin size={13} className="text-slate-400 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-slate-600 flex-1">{order.deliveryAddress.fullAddress}</p>
+              </div>
+
+              <div className="mb-3 grid grid-cols-1 gap-1 rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs">
+                <div><span className="font-bold text-slate-500">Producto:</span> <span className="font-semibold text-slate-800">{order.productName}</span></div>
+                <div><span className="font-bold text-slate-500">Tienda:</span> <span className="font-semibold text-slate-800">{order.storeName}</span></div>
               </div>
 
               {/* Financial & Fulfillment badges */}

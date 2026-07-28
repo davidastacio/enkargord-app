@@ -392,6 +392,10 @@ export default function RutaPage() {
 
         <div>
           <h3 className="text-lg font-black mb-1">{currentOrder.customerName}</h3>
+          <div className="mb-2 space-y-0.5 text-xs text-white/90">
+            <div><span className="font-black">Producto:</span> {currentOrder.productName || currentOrder.packageDescription || 'Producto no especificado'}</div>
+            <div><span className="font-black">Tienda:</span> {currentOrder.storeName || 'Tienda EnkargoRD'}</div>
+          </div>
           <div className="flex items-start gap-1.5 opacity-90 text-sm">
             <MapPin size={14} className="text-red-200 flex-shrink-0 mt-0.5" />
             <p className="font-semibold">{currentOrder.formattedAddress || currentOrder.street}</p>

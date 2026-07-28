@@ -28,6 +28,8 @@ export function toCourierOrder(
     courierName: raw.courierName || "",
     storeId: raw.storeId || "",
     storeName: raw.storeName || "Tienda EnkargoRD",
+    productName: raw.productName || raw.packageDescription || "Producto no especificado",
+    packageDescription: raw.packageDescription || undefined,
     createdAt: order.createdAt,
     scheduledAt: raw.scheduledAt || undefined,
     customer: {

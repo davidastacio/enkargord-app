@@ -372,6 +372,14 @@ export default function PedidoDetallePage() {
 
           <div className="grid grid-cols-2 gap-4 text-xs">
             <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Producto</span>
+              <span className="font-bold text-slate-800">{order.productName || order.packageDescription || 'Producto no especificado'}</span>
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Tienda</span>
+              <span className="font-bold text-slate-800">{order.storeName || 'Tienda EnkargoRD'}</span>
+            </div>
+            <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Empaque</span>
               <span className="font-bold text-slate-800 capitalize">{order.packageType}</span>
             </div>

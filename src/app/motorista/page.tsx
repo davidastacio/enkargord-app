@@ -64,6 +64,8 @@ export default function MotoristaHome() {
             status: mappedStatus as OrderStatus,
             storeId: o.storeId || 'STORE_01',
             storeName: o.storeName || 'Tienda Enkargo',
+            productName: o.productName || o.packageDescription || 'Producto no especificado',
+            packageDescription: o.packageDescription || '',
             courierId: o.courierId || '',
             courierName: o.courierName || '',
             createdAt: o.createdAt || new Date().toISOString(),
@@ -269,6 +271,10 @@ export default function MotoristaHome() {
             <div className="flex-1 min-w-0">
               <div className="font-bold text-slate-800">{nextOrder.customer.name}</div>
               <div className="text-xs text-slate-500 mt-0.5 truncate">{nextOrder.deliveryAddress.fullAddress}</div>
+              <div className="mt-2 space-y-0.5 text-xs">
+                <div><span className="font-bold text-slate-500">Producto:</span> <span className="font-semibold text-slate-700">{nextOrder.productName}</span></div>
+                <div><span className="font-bold text-slate-500">Tienda:</span> <span className="font-semibold text-slate-700">{nextOrder.storeName}</span></div>
+              </div>
               <div className="flex items-center gap-2 mt-2">
                 <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
                   {nextOrder.trackingId}
