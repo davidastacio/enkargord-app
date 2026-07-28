@@ -27,6 +27,8 @@ import {
   Printer,
   Play,
   Trash2,
+  ChevronDown,
+  RotateCcw,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import MapComponent from '@/components/MapComponent';
@@ -147,6 +149,8 @@ export default function AdminDashboard() {
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isRegionalAction, setIsRegionalAction] = useState(false);
+  const [expandedRegions, setExpandedRegions] = useState<Set<LogisticsRegion>>(new Set());
+  const [returningOrderId, setReturningOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user || profile?.role !== 'Admin' || migrationTriggeredRef.current) return;
@@ -715,6 +719,39 @@ export default function AdminDashboard() {
     }
   };
 
+  const returnOrderToDispatch = async (order: Order) => {
+    if (!user || returningOrderId) return;
+    const confirmed = window.confirm(
+      `¿Devolver el pedido #${order.trackingId} a la Bandeja de Entrada Central? Se retirará del motorista y de su ruta activa.`,
+    );
+    if (!confirmed) return;
+
+    setReturningOrderId(order.id);
+    try {
+      const response = await fetch('/api/admin/orders/return-to-dispatch', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await user.getIdToken()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error || 'RETURN_TO_DISPATCH_FAILED');
+      setOrders((currentOrders) => currentOrders.map((currentOrder) => (
+        currentOrder.id === order.id
+          ? { ...currentOrder, status: 'pending', courierId: '', courierName: 'No asignado' }
+          : currentOrder
+      )));
+      triggerToast(`Pedido #${order.trackingId} devuelto a la Bandeja de Entrada Central.`);
+    } catch (error) {
+      console.error('Error returning order to dispatch:', error);
+      triggerToast('No se pudo devolver el pedido a la bandeja.');
+    } finally {
+      setReturningOrderId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F8F9FB] flex font-sans text-slate-800 antialiased">
       {sidebarOpen && (
@@ -1015,7 +1052,18 @@ export default function AdminDashboard() {
                         </div>
                         <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-extrabold text-[#d3121a]">{regionOrders.length}</span>
                       </div>
-                      <div className="grid grid-cols-3 gap-2 mt-4">
+                      <div className="grid grid-cols-4 gap-2 mt-4">
+                        <button
+                          onClick={() => setExpandedRegions((current) => {
+                            const next = new Set(current);
+                            next.has(region) ? next.delete(region) : next.add(region);
+                            return next;
+                          })}
+                          className="flex items-center justify-center gap-1 rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-[10px] font-bold text-slate-700"
+                        >
+                          <ChevronDown size={13} className={`transition-transform ${expandedRegions.has(region) ? 'rotate-180' : ''}`} />
+                          Pedidos
+                        </button>
                         <button disabled={isRegionalAction} onClick={() => void downloadRegionalPdf(region, 'orders')} className="flex items-center justify-center gap-1 rounded-xl border border-slate-200 py-2.5 text-[10px] font-bold text-slate-600 disabled:opacity-40">
                           <FileDown size={13} /> PDF
                         </button>
@@ -1026,6 +1074,29 @@ export default function AdminDashboard() {
                           <Play size={13} /> Iniciar
                         </button>
                       </div>
+                      {expandedRegions.has(region) && (
+                        <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
+                          {regionOrders.map((order) => (
+                            <div key={order.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="truncate text-xs font-extrabold text-slate-800">#{order.trackingId}</div>
+                                  <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-600">{order.customer.name} · {order.storeName}</div>
+                                  <div className="mt-0.5 truncate text-[10px] text-slate-400">Motorista: {order.courierName}</div>
+                                </div>
+                                <button
+                                  disabled={returningOrderId === order.id}
+                                  onClick={() => void returnOrderToDispatch(order)}
+                                  className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] font-extrabold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                                >
+                                  <RotateCcw size={12} />
+                                  {returningOrderId === order.id ? 'Devolviendo…' : 'Devolver a Bandeja'}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </article>
                   ))}
                   {Object.keys(regionalOrders).length === 0 && (
