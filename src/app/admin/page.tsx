@@ -1044,7 +1044,12 @@ export default function AdminDashboard() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {(Object.entries(regionalOrders) as [LogisticsRegion, Order[]][]).map(([region, regionOrders]) => (
-                    <article key={region} className="bg-white border border-[#E7E7EC] rounded-2xl p-5 shadow-sm">
+                    <article
+                      key={region}
+                      className={`bg-white border border-[#E7E7EC] rounded-2xl p-5 shadow-sm transition-all ${
+                        expandedRegions.has(region) ? 'md:col-span-2 xl:col-span-2' : ''
+                      }`}
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h4 className="font-extrabold text-slate-900">{routeLabel(region, regionOrders[0]?.provinceName)}</h4>
@@ -1077,17 +1082,22 @@ export default function AdminDashboard() {
                       {expandedRegions.has(region) && (
                         <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
                           {regionOrders.map((order) => (
-                            <div key={order.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                              <div className="flex items-start justify-between gap-3">
+                            <div key={order.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                              <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-start">
                                 <div className="min-w-0">
-                                  <div className="truncate text-xs font-extrabold text-slate-800">#{order.trackingId}</div>
-                                  <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-600">{order.customer.name} · {order.storeName}</div>
-                                  <div className="mt-0.5 truncate text-[10px] text-slate-400">Motorista: {order.courierName}</div>
+                                  <div className="break-all text-xs font-extrabold text-slate-800">#{order.trackingId}</div>
+                                  <div className="mt-2 grid gap-1 text-[11px] sm:grid-cols-2 sm:gap-x-8">
+                                    <div><span className="font-bold text-slate-400">Cliente:</span> <span className="font-semibold text-slate-700">{order.customer.name}</span></div>
+                                    <div><span className="font-bold text-slate-400">Tienda:</span> <span className="font-semibold text-slate-700">{order.storeName}</span></div>
+                                  </div>
+                                  <div className="mt-1 text-[10px] text-slate-500">
+                                    <span className="font-bold text-slate-400">Motorista:</span> {order.courierName}
+                                  </div>
                                 </div>
                                 <button
                                   disabled={returningOrderId === order.id}
                                   onClick={() => void returnOrderToDispatch(order)}
-                                  className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] font-extrabold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                                  className="flex flex-shrink-0 items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-extrabold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
                                 >
                                   <RotateCcw size={12} />
                                   {returningOrderId === order.id ? 'Devolviendo…' : 'Devolver a Bandeja'}
