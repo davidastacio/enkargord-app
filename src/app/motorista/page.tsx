@@ -292,6 +292,7 @@ export default function MotoristaHome() {
             <WhatsAppContactButton
               phone={nextOrder.customer.phone}
               orderId={nextOrder.id}
+              customerName={nextOrder.customer.name}
               storeName={nextOrder.storeName || 'Tienda'}
               trackingId={nextOrder.trackingId || nextOrder.id}
               templateKey="in_transit"

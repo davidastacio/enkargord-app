@@ -332,6 +332,7 @@ export default function PedidosPage() {
                 <WhatsAppContactButton
                   phone={order.customer.phone}
                   orderId={order.id}
+                  customerName={order.customer.name}
                   storeName={order.storeName || 'Tienda'}
                   trackingId={order.trackingId || order.id}
                   templateKey={(['in_transit', 'close', 'arrived', 'no_contact', 'rescheduled'] as const)[templateKey] || 'in_transit'}

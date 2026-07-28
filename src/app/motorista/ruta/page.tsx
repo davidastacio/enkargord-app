@@ -417,6 +417,7 @@ export default function RutaPage() {
           <WhatsAppContactButton
             phone={currentOrder.customerPhone}
             orderId={currentOrder.id}
+            customerName={currentOrder.customerName}
             storeName={currentOrder.storeName || 'Tienda'}
             trackingId={currentOrder.tracking || currentOrder.id}
             templateKey="in_transit"

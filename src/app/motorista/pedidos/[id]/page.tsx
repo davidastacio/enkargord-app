@@ -321,6 +321,7 @@ export default function PedidoDetallePage() {
                 <WhatsAppContactButton
                   phone={order.customerPhone}
                   orderId={order.id}
+                  customerName={order.customerName}
                   storeName={order.storeName || 'Tienda'}
                   trackingId={order.tracking || order.id}
                   templateKey="in_transit"

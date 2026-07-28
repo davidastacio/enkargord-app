@@ -34,7 +34,7 @@ interface WhatsAppContactButtonProps {
 }
 
 const TEMPLATES = {
-  in_transit: "Hola, soy {motorista}, repartidor de EnkargoRD. Tengo una entrega de {tienda} con tracking {tracking}. Estoy en ruta hacia su dirección. Por favor, confirme si está disponible para recibirla.",
+  in_transit: "Hola señor {cliente}, soy el motorista de EnkargoRD, encargado de entregarle su pedido. Tengo una entrega para usted tracking {tracking}. Estoy en ruta hacia su dirección. Por favor, confirme si está disponible para recibirla.",
   close: "Hola, le escribe {motorista} de EnkargoRD. Estoy muy cerca de su ubicación para realizar la entrega de {tienda} ({tracking}).",
   arrived: "Hola, soy {motorista} de EnkargoRD. Acabo de llegar a la ubicación de entrega de {tienda}. Estoy afuera.",
   no_contact: "Estimado cliente, le escribe {motorista} de EnkargoRD. He intentado comunicarme con usted para entregar su pedido de {tienda} ({tracking}) pero no he tenido éxito. Por favor confirme disponibilidad.",
@@ -47,6 +47,7 @@ export default function WhatsAppContactButton({
   storeName,
   trackingId,
   tracking,
+  customerName,
   templateKey = 'in_transit',
   className,
   label
@@ -61,6 +62,7 @@ export default function WhatsAppContactButton({
       const resolvedTracking = trackingId || tracking || orderId;
       const message = templateText
         .replace('{motorista}', motoristaName)
+        .replace('{cliente}', customerName?.trim() || 'cliente')
         .replace('{tienda}', storeName)
         .replace('{tracking}', resolvedTracking);
 
