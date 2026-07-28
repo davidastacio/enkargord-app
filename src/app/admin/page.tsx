@@ -168,6 +168,7 @@ export default function AdminDashboard() {
   // Form Inputs - Direct Order Form
   const [formCustName, setFormCustName] = useState('');
   const [formStoreName, setFormStoreName] = useState('');
+  const [formProductName, setFormProductName] = useState('');
   const [formCustPhone, setFormCustPhone] = useState('');
   const [formCustAddress, setFormCustAddress] = useState('');
   const [formProvinceId, setFormProvinceId] = useState('PROV_DN');
@@ -496,6 +497,8 @@ export default function AdminDashboard() {
       locationVerified: false,
       packageType: "Paquete",
       packageQuantity: 1,
+      productName: formProductName.trim(),
+      packageDescription: formProductName.trim(),
       requiresCashOnDelivery: pCost > 0,
       collectionAmount: pCost,
       shippingCost: sCost,
@@ -535,6 +538,7 @@ export default function AdminDashboard() {
 
       // Reset Inputs
       setFormStoreName('');
+      setFormProductName('');
       setFormCustName('');
       setFormCustPhone('');
       setFormCustAddress('');
@@ -1663,6 +1667,17 @@ export default function AdminDashboard() {
                 <p className="text-[10px] font-medium text-slate-400">
                   Si no existe, se creará como tienda externa administrada por EnkargoRD para sus liquidaciones.
                 </p>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Nombre del Producto</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej. Juego de sábanas queen"
+                  value={formProductName}
+                  onChange={(e) => setFormProductName(e.target.value)}
+                  className="w-full bg-white border border-[#E7E7EC] rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#d3121a]"
+                />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Nombre del Cliente</label>
