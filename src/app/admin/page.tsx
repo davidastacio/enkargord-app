@@ -170,6 +170,7 @@ export default function AdminDashboard() {
   const [isRegionalAction, setIsRegionalAction] = useState(false);
   const [expandedRegions, setExpandedRegions] = useState<Set<LogisticsRegion>>(new Set());
   const [returningOrderId, setReturningOrderId] = useState<string | null>(null);
+  const [deliveringOrderId, setDeliveringOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user || profile?.role !== 'Admin' || migrationTriggeredRef.current) return;
@@ -772,6 +773,38 @@ export default function AdminDashboard() {
     }
   };
 
+  const markRegionalOrderDelivered = async (order: Order) => {
+    if (!user || deliveringOrderId || returningOrderId) return;
+    const amount = Number(order.financials.totalCollected || 0);
+    const confirmed = window.confirm(
+      `¿Confirmas que el pedido #${order.trackingId} fue entregado y se cobraron RD$${amount.toLocaleString()}? Se retirará de la ruta del motorista.`,
+    );
+    if (!confirmed) return;
+
+    setDeliveringOrderId(order.id);
+    try {
+      const response = await fetch('/api/admin/orders/mark-delivered', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await user.getIdToken()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error || 'MARK_DELIVERED_FAILED');
+      setOrders((currentOrders) => currentOrders.map((currentOrder) => (
+        currentOrder.id === order.id ? { ...currentOrder, status: 'delivered' } : currentOrder
+      )));
+      triggerToast(`Pedido #${order.trackingId} marcado como entregado. Monto distribuido correctamente.`);
+    } catch (error) {
+      console.error('Error marking regional order delivered:', error);
+      triggerToast('No se pudo marcar el pedido como entregado.');
+    } finally {
+      setDeliveringOrderId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F8F9FB] flex font-sans text-slate-800 antialiased">
       {sidebarOpen && (
@@ -1114,14 +1147,24 @@ export default function AdminDashboard() {
                                     <span className="font-bold text-slate-400">Motorista:</span> {order.courierName}
                                   </div>
                                 </div>
-                                <button
-                                  disabled={returningOrderId === order.id}
-                                  onClick={() => void returnOrderToDispatch(order)}
-                                  className="flex flex-shrink-0 items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-extrabold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
-                                >
-                                  <RotateCcw size={12} />
-                                  {returningOrderId === order.id ? 'Devolviendo…' : 'Devolver a Bandeja'}
-                                </button>
+                                <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row">
+                                  <button
+                                    disabled={deliveringOrderId === order.id || returningOrderId === order.id}
+                                    onClick={() => void markRegionalOrderDelivered(order)}
+                                    className="flex items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] font-extrabold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+                                  >
+                                    <CheckCircle size={12} />
+                                    {deliveringOrderId === order.id ? 'Marcando…' : 'Marcar entregado'}
+                                  </button>
+                                  <button
+                                    disabled={returningOrderId === order.id || deliveringOrderId === order.id}
+                                    onClick={() => void returnOrderToDispatch(order)}
+                                    className="flex items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-extrabold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                                  >
+                                    <RotateCcw size={12} />
+                                    {returningOrderId === order.id ? 'Devolviendo…' : 'Devolver a Bandeja'}
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           ))}
