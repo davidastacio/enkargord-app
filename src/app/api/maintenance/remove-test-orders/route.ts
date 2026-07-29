@@ -95,58 +95,50 @@ export async function POST(request: Request) {
     if (error) throw error;
   }
 
-  const courierAdjustments = new Map<
-    string,
-    { active: number; delivered: number }
-  >();
-  for (const order of orders) {
-    if (!order.courier_id) continue;
-    const adjustment = courierAdjustments.get(order.courier_id) || {
-      active: 0,
-      delivered: 0,
-    };
-    if (["assigned", "picked_up", "in_transit", "on_route", "next_delivery"].includes(order.status)) {
-      adjustment.active += 1;
-    }
-    if (order.status === "delivered") adjustment.delivered += 1;
-    courierAdjustments.set(order.courier_id, adjustment);
-  }
-
-  for (const [courierId, adjustment] of courierAdjustments) {
-    const { data: courier, error: courierError } = await supabase
-      .from("couriers")
-      .select("current_order_count,completed_order_count")
-      .eq("id", courierId)
-      .single();
-    if (courierError) throw courierError;
-
-    const { error } = await supabase
-      .from("couriers")
-      .update({
-        current_order_count: Math.max(
-          0,
-          Number(courier.current_order_count || 0) - adjustment.active,
-        ),
-        completed_order_count: Math.max(
-          0,
-          Number(courier.completed_order_count || 0) - adjustment.delivered,
-        ),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", courierId);
-    if (error) throw error;
-  }
-
   const { error: deleteError } = await supabase
     .from("orders")
     .delete()
     .in("id", [...TARGET_IDS]);
   if (deleteError) throw deleteError;
 
+  const courierIds = [
+    ...new Set(
+      orders
+        .map((order) => order.courier_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ];
+  for (const courierId of courierIds) {
+    const [activeResult, completedResult] = await Promise.all([
+      supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("courier_id", courierId)
+        .in("status", ["assigned", "picked_up", "in_transit", "on_route", "next_delivery"]),
+      supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("courier_id", courierId)
+        .eq("status", "delivered"),
+    ]);
+    if (activeResult.error) throw activeResult.error;
+    if (completedResult.error) throw completedResult.error;
+
+    const { error } = await supabase
+      .from("couriers")
+      .update({
+        current_order_count: activeResult.count || 0,
+        completed_order_count: completedResult.count || 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", courierId);
+    if (error) throw error;
+  }
+
   return Response.json({
     removedOrderIds: TARGET_IDS,
     removedOrderCount: orders.length,
-    adjustedCouriers: [...courierAdjustments.keys()],
+    adjustedCouriers: courierIds,
     updatedRoutes: routes.map((route) => route.id),
   });
 }
