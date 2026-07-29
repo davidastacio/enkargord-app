@@ -19,11 +19,30 @@ function isDomainAllowed(urlStr: string): boolean {
   }
 }
 
+function normalizeLocationInput(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  const embeddedUrl = trimmed.match(/https?:\/\/[^\s<>"']+/i)?.[0];
+  return (embeddedUrl || trimmed).replace(/[),.;]+$/, '');
+}
+
 // Extract coords using regex from URL string
 function extractCoords(urlStr: string): { latitude: number; longitude: number } | null {
+  const decodedUrl = decodeURIComponent(urlStr);
+
+  // The shared pin is more precise than /@lat,lng, which may be the map center.
+  const pinPattern = /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/;
+  const pinMatch = decodedUrl.match(pinPattern);
+  if (pinMatch) {
+    return {
+      latitude: parseFloat(pinMatch[1]),
+      longitude: parseFloat(pinMatch[2])
+    };
+  }
+
   // Pattern 1: /@lat,lng
   const atPattern = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
-  const matchAt = urlStr.match(atPattern);
+  const matchAt = decodedUrl.match(atPattern);
   if (matchAt) {
     return {
       latitude: parseFloat(matchAt[1]),
@@ -33,7 +52,7 @@ function extractCoords(urlStr: string): { latitude: number; longitude: number } 
 
   // Pattern 2: query=lat,lng or q=lat,lng or ll=lat,lng
   const queryPattern = /[?&](query|q|ll)=(-?\d+\.\d+),(-?\d+\.\d+)/;
-  const matchQuery = urlStr.match(queryPattern);
+  const matchQuery = decodedUrl.match(queryPattern);
   if (matchQuery) {
     return {
       latitude: parseFloat(matchQuery[2]),
@@ -44,10 +63,44 @@ function extractCoords(urlStr: string): { latitude: number; longitude: number } 
   return null;
 }
 
+async function resolveGoogleMapsRedirect(initialUrl: string): Promise<string> {
+  let currentUrl = initialUrl;
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (!isDomainAllowed(currentUrl)) throw new Error('UNAUTHORIZED_REDIRECT');
+
+    let response = await fetch(currentUrl, {
+      method: 'HEAD',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(6000)
+    });
+
+    if (!response.headers.get('location') && response.status !== 200) {
+      response = await fetch(currentUrl, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EnkargoRD/1.0)' },
+        signal: AbortSignal.timeout(6000)
+      });
+    }
+
+    const location = response.headers.get('location');
+    if (!location) return response.url || currentUrl;
+
+    const nextUrl = new URL(location, currentUrl).toString();
+    if (!isDomainAllowed(nextUrl)) throw new Error('UNAUTHORIZED_REDIRECT');
+    currentUrl = nextUrl;
+
+    if (extractCoords(currentUrl)) return currentUrl;
+  }
+
+  return currentUrl;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { url } = body;
+    const url = normalizeLocationInput(body.url);
 
     if (!url) {
       return NextResponse.json({ success: false, error: 'URL no proporcionada' }, { status: 400 });
@@ -75,22 +128,7 @@ export async function POST(req: Request) {
 
       // Follow redirect if it's a short URL
       if (url.includes('maps.app.goo.gl') || url.includes('goo.gl/maps') || url.includes('goo.gl')) {
-        const response = await fetch(url, {
-          method: 'HEAD',
-          redirect: 'manual',
-          signal: AbortSignal.timeout(6000)
-        });
-
-        const locationHeader = response.headers.get('location');
-        if (locationHeader) {
-          if (!isDomainAllowed(locationHeader)) {
-            return NextResponse.json({ 
-              success: false, 
-              error: 'Redirección no autorizada a un dominio desconocido.' 
-            }, { status: 400 });
-          }
-          finalUrl = locationHeader;
-        }
+        finalUrl = await resolveGoogleMapsRedirect(url);
       }
 
       const coords = extractCoords(finalUrl);
@@ -106,13 +144,13 @@ export async function POST(req: Request) {
       source = url.includes('whatsapp') ? 'whatsapp' : 'google_maps';
     }
 
-    if (!latitude || !longitude || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    if (latitude === null || longitude === null || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
       return NextResponse.json({ success: false, error: 'Coordenadas fuera de rango válido.' }, { status: 400 });
     }
 
     // Call OpenStreetMap Nominatim reverse geocoder for DR location resolution
     let formattedAddress = `Coordenadas: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
-    let details: any = {};
+    let details: Record<string, string> = {};
 
     try {
       const geoRes = await fetch(
@@ -153,7 +191,8 @@ export async function POST(req: Request) {
       details
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    console.error('Error resolving shared location:', error);
     return NextResponse.json({ 
       success: false, 
       error: 'No pudimos procesar la geocodificación de esta ubicación.' 
