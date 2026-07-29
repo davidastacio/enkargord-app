@@ -184,7 +184,6 @@ export default function MotoristaLayout({ children }: { children: React.ReactNod
   return (
     <RouteGuard allowedRoles={['Motorista', 'Admin']}>
       <div className="min-h-screen bg-[#F8F9FB] font-sans text-slate-800 antialiased">
-        <CourierLocationSharing />
         {/* ── Desktop Sidebar ─────────────────────── */}
         <div className="hidden lg:block">
           <Sidebar />
@@ -238,6 +237,9 @@ export default function MotoristaLayout({ children }: { children: React.ReactNod
               </div>
             </div>
           </header>
+
+          {/* Static in the page flow so the location control never covers navigation or actions. */}
+          <CourierLocationSharing />
 
           {/* Page content */}
           <main className="flex-1 p-4 lg:p-8">

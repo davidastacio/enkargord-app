@@ -98,7 +98,7 @@ export default function CourierLocationSharing() {
         </div>
       )}
 
-      <div className="fixed bottom-4 right-4 z-[9000] max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+      <div className="mx-4 mt-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:mx-8">
         <div className="flex items-center gap-3">
           <span
             className={`h-2.5 w-2.5 rounded-full ${

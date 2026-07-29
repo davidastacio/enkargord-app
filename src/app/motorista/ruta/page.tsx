@@ -67,6 +67,7 @@ export default function RutaPage() {
   const [unreachableNote, setUnreachableNote] = useState('');
   const [deliveryNote, setDeliveryNote] = useState('');
   const [actionSubmitting, setActionSubmitting] = useState(false);
+  const [selectingOrderId, setSelectingOrderId] = useState<string | null>(null);
 
   const triggerToast = (msg: string) => {
     setToast(msg);
@@ -335,6 +336,38 @@ export default function RutaPage() {
     }
   };
 
+  const handleSelectStop = async (order: any) => {
+    if (!route || selectingOrderId) return;
+
+    setSelectingOrderId(order.id);
+    try {
+      const selectedIndex = route.orderIds.indexOf(order.id);
+      const nextId =
+        route.orderIds
+          .slice(selectedIndex + 1)
+          .find((id: string) => {
+            const candidate = orders.find((item) => item.id === id);
+            return candidate && !['delivered', 'cancelled', 'failed'].includes(candidate.status);
+          }) || null;
+
+      await updateSupabaseRoute(route.id, {
+        currentOrderId: order.id,
+        nextOrderId: nextId,
+        currentProvinceName: order.provinceName || '',
+        currentMunicipalityName: order.municipalityName || '',
+        currentSectorName: order.sectorName || '',
+        updatedAt: new Date().toISOString(),
+      });
+
+      router.push(`/motorista/pedidos/${order.id}`);
+    } catch (error) {
+      console.error('Error selecting route stop:', error);
+      setErrorAlert('No pudimos seleccionar esta parada. Intenta nuevamente.');
+      setTimeout(() => setErrorAlert(null), 4000);
+      setSelectingOrderId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-lg mx-auto text-center py-20">
@@ -600,9 +633,13 @@ export default function RutaPage() {
             const badge = STATUS_BADGE[order.status] || { label: order.status, color: 'text-slate-500', bg: 'bg-slate-100' };
             const isActive = order.id === currentOrder.id;
             return (
-              <div
+              <button
+                type="button"
                 key={order.id}
-                className={`flex items-center gap-3 px-4 py-3.5 transition-all ${
+                onClick={() => void handleSelectStop(order)}
+                disabled={selectingOrderId !== null}
+                aria-label={`Seleccionar entrega de ${order.customerName || 'cliente'}`}
+                className={`flex w-full items-center gap-3 px-4 py-3.5 text-left transition-all disabled:cursor-wait disabled:opacity-70 ${
                   isActive ? 'bg-[#fee2e2]/30 border-l-4 border-l-[#d3121a]' : 'hover:bg-slate-50'
                 }`}
               >
@@ -618,13 +655,11 @@ export default function RutaPage() {
                 <span className={`text-[9px] font-black px-2 py-0.5 rounded-full flex-shrink-0 ${badge.bg} ${badge.color}`}>
                   {badge.label}
                 </span>
-                <Link
-                  href={`/motorista/pedidos/${order.id}`}
-                  className="text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-colors"
-                >
-                  Detalle →
-                </Link>
-              </div>
+                <span className="flex items-center gap-1 text-[10px] font-bold text-[#d3121a]">
+                  {selectingOrderId === order.id ? 'Abriendo...' : isActive ? 'Continuar' : 'Seleccionar'}
+                  <ChevronRight size={13} />
+                </span>
+              </button>
             );
           })}
         </div>
