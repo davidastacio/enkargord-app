@@ -25,8 +25,30 @@ interface MapComponentProps {
     lng: number;
     pendingCount: number;
   }>;
+  customerStops?: Array<{
+    id: string;
+    name: string;
+    tracking: string;
+    storeName: string;
+    address: string;
+    lat: number;
+    lng: number;
+    distanceKm?: number;
+    recommended?: boolean;
+  }>;
+  onSelectStop?: (id: string) => void;
 }
 
-export default function MapComponent({ activeCouriers }: MapComponentProps) {
-  return <MapWrapper activeCouriers={activeCouriers} />;
+export default function MapComponent({
+  activeCouriers,
+  customerStops = [],
+  onSelectStop,
+}: MapComponentProps) {
+  return (
+    <MapWrapper
+      activeCouriers={activeCouriers}
+      customerStops={customerStops}
+      onSelectStop={onSelectStop}
+    />
+  );
 }

@@ -82,6 +82,7 @@ interface Order {
   courierName: string;
   time: string;
   createdAt: string;
+  locationVerified: boolean;
   customer: {
     name: string;
     phone: string;
@@ -249,6 +250,7 @@ export default function AdminDashboard() {
           courierName: o.courierName || 'No asignado',
           time: o.time || (o.createdAt ? new Date(o.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A'),
           createdAt: o.createdAt || new Date().toISOString(),
+          locationVerified: Boolean(o.locationVerified),
           customer: {
             name: o.customerName || o.customer?.name || 'Cliente',
             phone: o.customerPhone || o.customer?.phone || 'N/A'
@@ -675,6 +677,22 @@ export default function AdminDashboard() {
         pendingCount: courier?.activeOrderCount || 0,
       };
     });
+  const geolocatedCustomerStops = orders
+    .filter((order) =>
+      order.locationVerified &&
+      !['delivered', 'cancelled', 'returned'].includes(order.status) &&
+      Number.isFinite(order.deliveryAddress.coordinates.lat) &&
+      Number.isFinite(order.deliveryAddress.coordinates.lng),
+    )
+    .map((order) => ({
+      id: order.id,
+      name: order.customer.name,
+      tracking: order.trackingId,
+      storeName: order.storeName,
+      address: order.deliveryAddress.addressLine,
+      lat: order.deliveryAddress.coordinates.lat,
+      lng: order.deliveryAddress.coordinates.lng,
+    }));
 
   // Calculate Settlement aggregates
   const settleDelivered = orders.filter(o => o.status === 'delivered');
@@ -1492,7 +1510,10 @@ export default function AdminDashboard() {
                   </div>
                   {/* Leaflet Dynamic Wrapper Container */}
                   <div className="w-full h-[380px] rounded-xl overflow-hidden relative">
-                    <MapComponent activeCouriers={leafletActiveCouriers} />
+                    <MapComponent
+                      activeCouriers={leafletActiveCouriers}
+                      customerStops={geolocatedCustomerStops}
+                    />
                   </div>
                 </div>
 

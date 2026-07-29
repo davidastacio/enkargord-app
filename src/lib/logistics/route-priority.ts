@@ -27,7 +27,7 @@ function normalize(value: unknown): string {
   return String(value ?? '').trim().toLocaleLowerCase('es-DO');
 }
 
-function distanceKm(from: RoutePoint, to: RoutePoint): number {
+export function distanceKm(from: RoutePoint, to: RoutePoint): number {
   const radius = 6371;
   const lat1 = from.latitude * Math.PI / 180;
   const lat2 = to.latitude * Math.PI / 180;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -33,26 +33,61 @@ interface MapWrapperProps {
     lng: number;
     pendingCount: number;
   }>;
+  customerStops: Array<{
+    id: string;
+    name: string;
+    tracking: string;
+    storeName: string;
+    address: string;
+    lat: number;
+    lng: number;
+    distanceKm?: number;
+    recommended?: boolean;
+  }>;
+  onSelectStop?: (id: string) => void;
 }
 
+const createCustomerIcon = (recommended = false) =>
+  L.divIcon({
+    html: `<div style="width:34px;height:34px;border-radius:12px;background:${recommended ? '#d3121a' : '#0f766e'};border:3px solid white;box-shadow:0 4px 12px rgba(15,23,42,.25);display:flex;align-items:center;justify-content:center;font-size:16px">📦</div>`,
+    className: 'custom-leaflet-customer-icon',
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -18],
+  });
+
 // Controller component to re-center or pan map when coords change
-function MapController({ couriers }: { couriers: MapWrapperProps['activeCouriers'] }) {
+function MapController({
+  couriers,
+  stops,
+}: {
+  couriers: MapWrapperProps['activeCouriers'];
+  stops: MapWrapperProps['customerStops'];
+}) {
   const map = useMap();
   useEffect(() => {
-    if (couriers.length === 0) return;
-    if (couriers.length === 1) {
-      map.setView([couriers[0].lat, couriers[0].lng], 16);
+    const points = [
+      ...couriers.map((courier) => [courier.lat, courier.lng] as [number, number]),
+      ...stops.map((stop) => [stop.lat, stop.lng] as [number, number]),
+    ];
+    if (points.length === 0) return;
+    if (points.length === 1) {
+      map.setView(points[0], 16);
       return;
     }
     map.fitBounds(
-      couriers.map((courier) => [courier.lat, courier.lng] as [number, number]),
+      points,
       { padding: [45, 45], maxZoom: 16 },
     );
-  }, [couriers, map]);
+  }, [couriers, map, stops]);
   return null;
 }
 
-export default function MapWrapper({ activeCouriers }: MapWrapperProps) {
+export default function MapWrapper({
+  activeCouriers,
+  customerStops,
+  onSelectStop,
+}: MapWrapperProps) {
   const [activeLayer, setActiveLayer] = useState<'streets' | 'satellite'>('streets');
   const centerCoords: [number, number] = [18.4861, -69.9312]; // Santo Domingo
 
@@ -132,7 +167,49 @@ export default function MapWrapper({ activeCouriers }: MapWrapperProps) {
           </Marker>
         ))}
 
-        <MapController couriers={activeCouriers} />
+        {customerStops.map((stop) => (
+          <Marker
+            key={stop.id}
+            position={[stop.lat, stop.lng]}
+            icon={createCustomerIcon(stop.recommended)}
+          >
+            <Tooltip permanent direction="top" offset={[0, -16]} opacity={0.95}>
+              <span className="text-[10px] font-bold">
+                {stop.recommended ? '⭐ ' : ''}{stop.name}
+              </span>
+            </Tooltip>
+            <Popup>
+              <div className="min-w-[190px] space-y-2 p-1 font-sans text-slate-800">
+                <div>
+                  <div className="text-sm font-extrabold">{stop.name}</div>
+                  <div className="text-[10px] font-bold text-[#d3121a]">{stop.tracking}</div>
+                </div>
+                <div className="text-xs text-slate-600">
+                  <div><strong>Tienda:</strong> {stop.storeName}</div>
+                  <div className="mt-1"><strong>Dirección:</strong> {stop.address}</div>
+                  {typeof stop.distanceKm === 'number' && (
+                    <div className="mt-1 font-extrabold text-emerald-700">
+                      A {stop.distanceKm < 1
+                        ? `${Math.round(stop.distanceKm * 1000)} m`
+                        : `${stop.distanceKm.toFixed(1)} km`}
+                    </div>
+                  )}
+                </div>
+                {onSelectStop && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectStop(stop.id)}
+                    className="w-full rounded-lg bg-[#d3121a] px-3 py-2 text-xs font-extrabold text-white"
+                  >
+                    Trabajar este pedido
+                  </button>
+                )}
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+
+        <MapController couriers={activeCouriers} stops={customerStops} />
       </MapContainer>
     </div>
   );
