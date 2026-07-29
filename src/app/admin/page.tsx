@@ -29,6 +29,7 @@ import {
   Trash2,
   ChevronDown,
   RotateCcw,
+  Eye,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import MapComponent from '@/components/MapComponent';
@@ -86,6 +87,7 @@ interface Order {
   customer: {
     name: string;
     phone: string;
+    alternatePhone?: string;
   };
   deliveryAddress: {
     addressLine: string;
@@ -97,6 +99,12 @@ interface Order {
   };
   provinceName?: string;
   municipalityName?: string;
+  reference?: string;
+  packageDescription?: string;
+  packageType?: string;
+  packageQuantity?: number;
+  paymentMethod?: string;
+  orderNote?: string;
   fulfillment: boolean;
   financials: Financials;
 }
@@ -175,6 +183,7 @@ export default function AdminDashboard() {
   const [expandedProvinces, setExpandedProvinces] = useState<Set<string>>(new Set());
   const [returningOrderId, setReturningOrderId] = useState<string | null>(null);
   const [deliveringOrderId, setDeliveringOrderId] = useState<string | null>(null);
+  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
 
   useEffect(() => {
     if (!user || profile?.role !== 'Admin' || migrationTriggeredRef.current) return;
@@ -253,7 +262,8 @@ export default function AdminDashboard() {
           locationVerified: Boolean(o.locationVerified),
           customer: {
             name: o.customerName || o.customer?.name || 'Cliente',
-            phone: o.customerPhone || o.customer?.phone || 'N/A'
+            phone: o.customerPhone || o.customer?.phone || 'N/A',
+            alternatePhone: o.customerAlternatePhone || o.customer?.alternatePhone || '',
           },
           deliveryAddress: {
             addressLine: o.formattedAddress || o.street || o.deliveryAddress?.addressLine || 'Sin dirección',
@@ -265,6 +275,12 @@ export default function AdminDashboard() {
           },
           provinceName: o.provinceName || '',
           municipalityName: o.municipalityName || '',
+          reference: o.reference || '',
+          packageDescription: o.packageDescription || o.productName || '',
+          packageType: o.packageType || '',
+          packageQuantity: Number(o.packageQuantity || 1),
+          paymentMethod: o.paymentMethod || '',
+          orderNote: o.orderNote || o.storeNote || o.notes || '',
           fulfillment: o.requiresFulfillment || false,
           financials: {
             productCost: fin.netStoreAmount,
@@ -1433,6 +1449,15 @@ export default function AdminDashboard() {
                             </td>
                             <td className="py-4 px-6 text-right whitespace-nowrap">
                               <button
+                                type="button"
+                                onClick={() => setDetailOrder(order)}
+                                className="mr-1.5 inline-flex items-center gap-1.5 border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] py-2 px-3 rounded-xl transition-all"
+                                title="Ver información completa del pedido"
+                              >
+                                <Eye size={13} />
+                                Detalles
+                              </button>
+                              <button
                                 onClick={() => user && void downloadOrdersPdf(user, [order.id], 'labels')}
                                 className="mr-1.5 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] py-2 px-3 rounded-xl transition-all"
                                 title="Descargar label PDF"
@@ -1948,6 +1973,116 @@ export default function AdminDashboard() {
 
         </div>
       </main>
+
+      {detailOrder && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="dispatch-order-detail-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setDetailOrder(null);
+          }}
+        >
+          <div className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-2xl border border-[#E7E7EC] bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-[#E7E7EC] bg-white p-5">
+              <div>
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#d3121a]">
+                  Detalles del pedido
+                </p>
+                <h3 id="dispatch-order-detail-title" className="mt-1 text-lg font-extrabold text-slate-900">
+                  #{detailOrder.trackingId}
+                </h3>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500">{detailOrder.storeName}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailOrder(null)}
+                className="rounded-xl bg-slate-100 p-2 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
+                aria-label="Cerrar detalles"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-5 p-5">
+              <section className="rounded-2xl bg-slate-50 p-4">
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-400">Cliente</h4>
+                <p className="mt-3 text-base font-extrabold text-slate-900">{detailOrder.customer.name}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <a href={`tel:${detailOrder.customer.phone}`} className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm">
+                    <Phone size={14} className="text-[#d3121a]" />
+                    {detailOrder.customer.phone}
+                  </a>
+                  {detailOrder.customer.alternatePhone && (
+                    <a href={`tel:${detailOrder.customer.alternatePhone}`} className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm">
+                      <Phone size={14} className="text-[#d3121a]" />
+                      Alternativo: {detailOrder.customer.alternatePhone}
+                    </a>
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-[#E7E7EC] p-4">
+                <h4 className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-slate-400">
+                  <MapPin size={14} className="text-[#d3121a]" />
+                  Dirección completa
+                </h4>
+                <p className="mt-3 whitespace-pre-wrap break-words text-sm font-semibold leading-6 text-slate-800">
+                  {detailOrder.deliveryAddress.addressLine}
+                </p>
+                <p className="mt-2 text-xs font-medium text-slate-500">
+                  {[detailOrder.deliveryAddress.city, detailOrder.municipalityName, detailOrder.provinceName]
+                    .filter(Boolean)
+                    .filter((value, index, values) => values.indexOf(value) === index)
+                    .join(' · ')}
+                </p>
+                {detailOrder.reference && (
+                  <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                    <strong>Referencia:</strong> {detailOrder.reference}
+                  </div>
+                )}
+              </section>
+
+              <section className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-[#E7E7EC] p-4">
+                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-400">Contenido</h4>
+                  <p className="mt-2 whitespace-pre-wrap break-words text-sm font-bold text-slate-800">
+                    {detailOrder.packageDescription || 'Sin descripción'}
+                  </p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {detailOrder.packageType || 'Paquete'} · Cantidad: {detailOrder.packageQuantity || 1}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[#E7E7EC] p-4">
+                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-400">Cobro</h4>
+                  <p className="mt-2 text-lg font-extrabold text-slate-900">
+                    RD${detailOrder.financials.totalCollected.toLocaleString()}
+                  </p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Método: {detailOrder.paymentMethod || 'No especificado'}
+                  </p>
+                </div>
+              </section>
+
+              {detailOrder.orderNote && (
+                <section className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-blue-600">Nota de la tienda</h4>
+                  <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-blue-950">{detailOrder.orderNote}</p>
+                </section>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setDetailOrder(null)}
+                className="w-full rounded-xl bg-slate-900 py-3 text-xs font-extrabold text-white transition-colors hover:bg-slate-800"
+              >
+                Cerrar detalles
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ==========================================
          CREATE ORDER MODAL DIALOG
