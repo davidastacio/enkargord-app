@@ -7,6 +7,7 @@ import {
   Calendar,
   MapPin,
   MessageSquareText,
+  RotateCcw,
   Search,
   Store,
   Truck,
@@ -61,14 +62,16 @@ export default function UndeliveredOrdersModule({
 }: {
   scope: "store" | "admin";
 }) {
-  const { profile } = useAuth() as {
-    profile?: { uid?: string; storeId?: string };
+  const { profile, user } = useAuth() as {
+    profile?: { uid?: string; storeId?: string; role?: string };
+    user?: { getIdToken: () => Promise<string> };
   };
   const [orders, setOrders] = useState<UndeliveredOrder[]>([]);
   const [storeNames, setStoreNames] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reassigningId, setReassigningId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!profile?.uid) return;
@@ -127,6 +130,32 @@ export default function UndeliveredOrdersModule({
       hour: "numeric",
       minute: "2-digit",
     });
+  };
+
+  const handleReassign = async (order: UndeliveredOrder) => {
+    if (!user || reassigningId) return;
+    const confirmed = window.confirm(
+      `¿Habilitar #${order.tracking || order.id} para asignarlo nuevamente a un motorista?`,
+    );
+    if (!confirmed) return;
+
+    setReassigningId(order.id);
+    try {
+      const response = await fetch("/api/orders/reassign", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${await user.getIdToken()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      if (!response.ok) throw new Error("REASSIGN_FAILED");
+    } catch (reassignError) {
+      console.error(reassignError);
+      window.alert("No pudimos habilitar este pedido para reasignación.");
+    } finally {
+      setReassigningId(null);
+    }
   };
 
   return (
@@ -200,8 +229,8 @@ export default function UndeliveredOrdersModule({
               [order.sectorName, order.municipalityName, order.provinceName]
                 .filter(Boolean)
                 .join(", ");
-            const content = (
-              <article className="h-full rounded-2xl border border-[#E7E7EC] bg-white p-5 shadow-sm transition-all hover:border-red-200 hover:shadow-md">
+            return (
+              <article key={order.id} className="h-full rounded-2xl border border-[#E7E7EC] bg-white p-5 shadow-sm transition-all hover:border-red-200 hover:shadow-md">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-extrabold text-slate-900">
@@ -250,15 +279,32 @@ export default function UndeliveredOrdersModule({
                     <span className="truncate">{address || "Dirección no disponible"}</span>
                   </div>
                 </div>
-              </article>
-            );
 
-            return scope === "store" ? (
-              <Link key={order.id} href={`/tienda/pedidos/${order.id}`}>
-                {content}
-              </Link>
-            ) : (
-              <div key={order.id}>{content}</div>
+                <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-4">
+                  {scope === "store" && (
+                    <Link
+                      href={`/tienda/pedidos/${order.id}`}
+                      className="rounded-xl border border-[#E7E7EC] px-4 py-2.5 text-xs font-bold text-slate-600"
+                    >
+                      Ver detalle
+                    </Link>
+                  )}
+                  {profile?.role !== "Colaborador" && order.status !== "returned" && (
+                    <button
+                      type="button"
+                      disabled={reassigningId !== null}
+                      onClick={() => void handleReassign(order)}
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#d3121a] px-4 py-2.5 text-xs font-extrabold text-white shadow-sm disabled:opacity-50"
+                    >
+                      <RotateCcw
+                        size={14}
+                        className={reassigningId === order.id ? "animate-spin" : ""}
+                      />
+                      {reassigningId === order.id ? "Reasignando..." : "Reasignar"}
+                    </button>
+                  )}
+                </div>
+              </article>
             );
           })}
         </div>
