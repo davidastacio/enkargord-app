@@ -170,6 +170,8 @@ export default function AdminDashboard() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isRegionalAction, setIsRegionalAction] = useState(false);
   const [expandedRegions, setExpandedRegions] = useState<Set<LogisticsRegion>>(new Set());
+  const [routeGrouping, setRouteGrouping] = useState<'region' | 'province'>('region');
+  const [expandedProvinces, setExpandedProvinces] = useState<Set<string>>(new Set());
   const [returningOrderId, setReturningOrderId] = useState<string | null>(null);
   const [deliveringOrderId, setDeliveringOrderId] = useState<string | null>(null);
 
@@ -705,6 +707,14 @@ export default function AdminDashboard() {
       return groups;
     }, {} as Partial<Record<LogisticsRegion, Order[]>>);
 
+  const provincialOrders = Object.values(regionalOrders)
+    .flat()
+    .reduce((groups, order) => {
+      const province = order.provinceName || 'Sin provincia';
+      (groups[province] ||= []).push(order);
+      return groups;
+    }, {} as Record<string, Order[]>);
+
   const downloadRegionalPdf = async (region: LogisticsRegion, mode: 'orders' | 'labels') => {
     const ids = (regionalOrders[region] || []).map((order) => order.id);
     if (!user || !ids.length || isRegionalAction) return;
@@ -736,6 +746,47 @@ export default function AdminDashboard() {
     } catch (error) {
       console.error(error);
       triggerToast('No se pudo iniciar la ruta regional.');
+    } finally {
+      setIsRegionalAction(false);
+    }
+  };
+
+  const downloadProvincePdf = async (province: string, mode: 'orders' | 'labels') => {
+    const ids = (provincialOrders[province] || []).map((order) => order.id);
+    if (!user || !ids.length || isRegionalAction) return;
+    setIsRegionalAction(true);
+    try {
+      await downloadOrdersPdf(user, ids, mode);
+    } catch (error) {
+      console.error(error);
+      triggerToast(`No se pudo generar el PDF de ${province}.`);
+    } finally {
+      setIsRegionalAction(false);
+    }
+  };
+
+  const startProvinceRoute = async (province: string) => {
+    const provinceOrders = provincialOrders[province] || [];
+    const ids = provinceOrders.map((order) => order.id);
+    if (!user || !ids.length || isRegionalAction) return;
+    setIsRegionalAction(true);
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/routes/start', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          region: logisticsRegion(province),
+          province,
+          orderIds: ids,
+        }),
+      });
+      if (!response.ok) throw new Error('PROVINCE_ROUTE_START_FAILED');
+      router.push('/motorista/ruta');
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      triggerToast(`No se pudo iniciar la ruta de ${province}.`);
     } finally {
       setIsRegionalAction(false);
     }
@@ -1092,11 +1143,21 @@ export default function AdminDashboard() {
           {activeTab === 'dispatch' && (
             <div className="space-y-8 animate-fade-in">
               <section className="space-y-4">
-                <div>
-                  <h3 className="font-extrabold text-slate-900">Rutas regionales de hoy</h3>
-                  <p className="text-xs text-slate-400 mt-1">Solo pedidos asignados a un motorista y despachados, agrupados por provincia y corredor logístico.</p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h3 className="font-extrabold text-slate-900">Rutas de hoy</h3>
+                    <p className="text-xs text-slate-400 mt-1">Inicia la jornada completa por región o trabaja exclusivamente una provincia.</p>
+                  </div>
+                  <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
+                    <button type="button" onClick={() => setRouteGrouping('region')} className={`rounded-lg px-4 py-2 text-[10px] font-extrabold ${routeGrouping === 'region' ? 'bg-slate-900 text-white' : 'text-slate-500'}`}>
+                      Por región
+                    </button>
+                    <button type="button" onClick={() => setRouteGrouping('province')} className={`rounded-lg px-4 py-2 text-[10px] font-extrabold ${routeGrouping === 'province' ? 'bg-[#d3121a] text-white' : 'text-slate-500'}`}>
+                      Por provincia
+                    </button>
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className={`${routeGrouping === 'region' ? 'grid' : 'hidden'} grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4`}>
                   {(Object.entries(regionalOrders) as [LogisticsRegion, Order[]][]).map(([region, regionOrders]) => (
                     <article
                       key={region}
@@ -1176,6 +1237,79 @@ export default function AdminDashboard() {
                   {Object.keys(regionalOrders).length === 0 && (
                     <div className="md:col-span-2 xl:col-span-3 bg-white border border-dashed border-slate-200 rounded-2xl p-8 text-center text-sm font-semibold text-slate-400">
                       No hay pedidos despachados con motorista asignado.
+                    </div>
+                  )}
+                </div>
+                <div className={`${routeGrouping === 'province' ? 'grid' : 'hidden'} grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4`}>
+                  {Object.entries(provincialOrders)
+                    .sort(([provinceA], [provinceB]) => provinceA.localeCompare(provinceB, 'es'))
+                    .map(([province, provinceOrders]) => (
+                      <article
+                        key={province}
+                        className={`bg-white border border-[#E7E7EC] rounded-2xl p-5 shadow-sm transition-all ${
+                          expandedProvinces.has(province) ? 'md:col-span-2 xl:col-span-2' : ''
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h4 className="font-extrabold text-slate-900">{province}</h4>
+                            <p className="text-xs text-slate-400 mt-1">{provinceOrders.length} pedidos exclusivos de esta provincia</p>
+                          </div>
+                          <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-extrabold text-[#d3121a]">{provinceOrders.length}</span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-2 mt-4">
+                          <button
+                            onClick={() => setExpandedProvinces((current) => {
+                              const next = new Set(current);
+                              next.has(province) ? next.delete(province) : next.add(province);
+                              return next;
+                            })}
+                            className="flex items-center justify-center gap-1 rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-[10px] font-bold text-slate-700"
+                          >
+                            <ChevronDown size={13} className={`transition-transform ${expandedProvinces.has(province) ? 'rotate-180' : ''}`} />
+                            Pedidos
+                          </button>
+                          <button disabled={isRegionalAction} onClick={() => void downloadProvincePdf(province, 'orders')} className="flex items-center justify-center gap-1 rounded-xl border border-slate-200 py-2.5 text-[10px] font-bold text-slate-600 disabled:opacity-40">
+                            <FileDown size={13} /> PDF
+                          </button>
+                          <button disabled={isRegionalAction} onClick={() => void downloadProvincePdf(province, 'labels')} className="flex items-center justify-center gap-1 rounded-xl border border-blue-200 bg-blue-50 py-2.5 text-[10px] font-bold text-blue-700 disabled:opacity-40">
+                            <Printer size={13} /> Labels
+                          </button>
+                          <button disabled={isRegionalAction} onClick={() => void startProvinceRoute(province)} className="flex items-center justify-center gap-1 rounded-xl bg-[#d3121a] py-2.5 text-[10px] font-bold text-white disabled:opacity-40">
+                            <Play size={13} /> Iniciar
+                          </button>
+                        </div>
+                        {expandedProvinces.has(province) && (
+                          <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
+                            {provinceOrders.map((order) => (
+                              <div key={order.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                                  <div className="min-w-0">
+                                    <div className="break-all text-xs font-extrabold text-slate-800">#{order.trackingId}</div>
+                                    <div className="mt-1 text-[11px] text-slate-600">
+                                      <span className="font-bold">{order.customer.name}</span> · {order.storeName}
+                                    </div>
+                                    <div className="mt-1 text-[10px] text-slate-400">
+                                      {order.municipalityName || order.deliveryAddress.city} · Motorista: {order.courierName}
+                                    </div>
+                                  </div>
+                                  <button
+                                    disabled={returningOrderId === order.id || deliveringOrderId === order.id}
+                                    onClick={() => void returnOrderToDispatch(order)}
+                                    className="flex flex-shrink-0 items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-extrabold text-amber-700 disabled:opacity-50"
+                                  >
+                                    <RotateCcw size={12} /> Devolver a Bandeja
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </article>
+                    ))}
+                  {Object.keys(provincialOrders).length === 0 && (
+                    <div className="md:col-span-2 xl:col-span-3 bg-white border border-dashed border-slate-200 rounded-2xl p-8 text-center text-sm font-semibold text-slate-400">
+                      No hay provincias con pedidos despachados.
                     </div>
                   )}
                 </div>

@@ -13,9 +13,10 @@ export async function POST(request: Request) {
     const { data: profile, error: profileError } = await supabase
       .from("user_profiles").select("*").eq("firebase_uid", decoded.uid).single();
     if (profileError || profile.role !== "Admin") return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-    const body = (await request.json()) as { orderIds?: unknown; region?: unknown };
+    const body = (await request.json()) as { orderIds?: unknown; region?: unknown; province?: unknown };
     const orderIds = Array.isArray(body.orderIds) ? body.orderIds.filter((id): id is string => typeof id === "string") : [];
     const region = String(body.region ?? "");
+    const province = typeof body.province === "string" ? body.province.trim() : "";
     if (!orderIds.length) return NextResponse.json({ error: "NO_ORDERS" }, { status: 400 });
 
     const { data: orders, error: ordersError } = await supabase
@@ -26,6 +27,9 @@ export async function POST(request: Request) {
     if (ordersError) throw ordersError;
     if (!orders || orders.length !== orderIds.length || orders.some((order) => logisticsRegion(order.province_name) !== region)) {
       return NextResponse.json({ error: "REGION_MISMATCH" }, { status: 409 });
+    }
+    if (province && orders.some((order) => order.province_name !== province)) {
+      return NextResponse.json({ error: "PROVINCE_MISMATCH" }, { status: 409 });
     }
     const prioritizedOrders = prioritizeDeliveryOrders(
       orders.map((order) => ({
@@ -81,7 +85,7 @@ export async function POST(request: Request) {
       .eq("courier_id", decoded.uid)
       .eq("status", "active");
     const id = `RTE-${Date.now()}`;
-    const label = routeLabel(region as any, orders[0]?.province_name);
+    const label = province ? `Ruta provincial: ${province}` : routeLabel(region as any, orders[0]?.province_name);
     const { error: routeError } = await supabase.from("courier_routes").insert({
       id,
       organization_id: profile.organization_id,
@@ -90,7 +94,7 @@ export async function POST(request: Request) {
       status: "active",
       order_ids: prioritizedOrderIds,
       current_order_index: 0,
-      metadata: { region, label, initiatedBy: "admin", createdAt: now },
+      metadata: { region, province: province || null, label, initiatedBy: "admin", createdAt: now },
       created_at: now,
       updated_at: now,
     });
