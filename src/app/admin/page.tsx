@@ -977,6 +977,14 @@ export default function AdminDashboard() {
               <Shield size={18} />
               Modo Repartidor
             </Link>
+
+            <Link
+              href="/admin/no-entregados"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            >
+              <AlertTriangle size={18} />
+              No Entregados
+            </Link>
           </nav>
         </div>
 

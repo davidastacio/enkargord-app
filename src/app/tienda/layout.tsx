@@ -19,7 +19,8 @@ import {
   ChevronDown,
   Calendar,
   HelpCircle,
-  Smartphone
+  Smartphone,
+  AlertTriangle
 } from 'lucide-react';
 import RouteGuard from '@/components/auth/RouteGuard';
 import AuthenticatedUserMenu from '@/components/auth/AuthenticatedUserMenu';
@@ -43,6 +44,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
     { name: 'Dashboard Tienda', href: '/tienda', icon: Package },
     { name: 'Crear Pedido', href: '/tienda/crear-pedido', icon: PlusCircle },
     { name: 'Mis Pedidos', href: '/tienda/pedidos', icon: ListOrdered },
+    { name: 'No Entregados', href: '/tienda/no-entregados', icon: AlertTriangle },
     { name: 'Seguimiento', href: '/tienda/seguimiento', icon: Map },
     { name: 'Clientes', href: '/tienda/clientes', icon: Users },
   ];
