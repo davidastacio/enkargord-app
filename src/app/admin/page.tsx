@@ -985,6 +985,14 @@ export default function AdminDashboard() {
               <AlertTriangle size={18} />
               No Entregados
             </Link>
+
+            <Link
+              href="/admin/entregados"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            >
+              <CheckCircle size={18} />
+              Pedidos Entregados
+            </Link>
           </nav>
         </div>
 

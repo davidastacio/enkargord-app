@@ -366,6 +366,17 @@ export default function PedidoDetallePage() {
                 <span className="text-xs text-slate-600 font-medium">{order.reference}</span>
               </div>
             )}
+
+            {order.storeOrderNote && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <span className="mb-1 block text-[10px] font-extrabold uppercase tracking-widest text-amber-700">
+                  Nota de la tienda
+                </span>
+                <span className="whitespace-pre-wrap text-xs font-bold leading-relaxed text-amber-950">
+                  {order.storeOrderNote}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

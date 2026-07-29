@@ -57,6 +57,7 @@ export default function CreateOrder() {
   const [street, setStreet] = useState('');
   const [streetNumber, setStreetNumber] = useState('');
   const [reference, setReference] = useState('');
+  const [storeOrderNote, setStoreOrderNote] = useState('');
   const [formattedAddress, setFormattedAddress] = useState('');
 
   // Ubicación compartida y Coordenadas GPS (Santo Domingo por defecto)
@@ -486,6 +487,7 @@ export default function CreateOrder() {
         street: street || null,
         streetNumber: streetNumber || null,
         reference: reference || null,
+        storeOrderNote: storeOrderNote.trim() || null,
         formattedAddress: formattedAddress || null,
         
         latitude: latitude || null,
@@ -940,6 +942,23 @@ export default function CreateOrder() {
                 onChange={(e) => setReference(e.target.value)}
                 className="w-full px-4 py-2.5 bg-white border border-[#E7E7EC] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#d3121a] transition-all"
               />
+            </div>
+
+            <div className="space-y-1">
+              <label className="flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                <span>Nota para el motorista (opcional)</span>
+                <span>{storeOrderNote.length}/500</span>
+              </label>
+              <textarea
+                value={storeOrderNote}
+                onChange={(event) => setStoreOrderNote(event.target.value.slice(0, 500))}
+                placeholder="Ej. Llamar al llegar, entregar en recepción o preguntar por una persona específica."
+                rows={3}
+                className="w-full resize-none rounded-xl border border-[#E7E7EC] bg-white px-4 py-3 text-xs font-semibold outline-none transition-all focus:border-[#d3121a]"
+              />
+              <p className="text-[10px] font-medium text-slate-400">
+                Esta nota será visible para el motorista encargado de la entrega.
+              </p>
             </div>
 
             <div className="space-y-1">

@@ -456,6 +456,17 @@ export default function RutaPage() {
           </span>
         </div>
 
+        {currentOrder.storeOrderNote && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950">
+            <div className="text-[10px] font-black uppercase tracking-widest text-amber-700">
+              Nota de la tienda
+            </div>
+            <p className="mt-1 whitespace-pre-wrap text-xs font-bold leading-relaxed">
+              {currentOrder.storeOrderNote}
+            </p>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 pt-2">
           <span className="text-2xl font-extrabold">RD${Number(currentOrder.collectionAmount || 0).toLocaleString()}</span>
           <span className="text-[10px] font-bold text-red-200 uppercase tracking-widest">total a cobrar (envío incluido)</span>
