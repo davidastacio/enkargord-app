@@ -732,13 +732,6 @@ export default function AdminDashboard() {
   const regionalOrders = orders
     .filter((order) => (
       !['delivered', 'cancelled', 'returned', 'failed', 'failed_delivery', 'customer_unreachable'].includes(order.status)
-      && (
-        order.status === 'pending'
-        || !order.courierId
-        || order.courierName === 'No asignado'
-        || order.courierId === profile?.courierId
-        || order.courierId === profile?.uid
-      )
     ))
     .reduce((groups, order) => {
       const region = logisticsRegion(order.provinceName || '');
@@ -769,7 +762,15 @@ export default function AdminDashboard() {
   };
 
   const startRegionalRoute = async (region: LogisticsRegion) => {
-    const ids = (regionalOrders[region] || []).map((order) => order.id);
+    const ids = (regionalOrders[region] || [])
+      .filter((order) => (
+        order.status === 'pending'
+        || !order.courierId
+        || order.courierName === 'No asignado'
+        || order.courierId === profile?.courierId
+        || order.courierId === profile?.uid
+      ))
+      .map((order) => order.id);
     if (!user || !ids.length || isRegionalAction) return;
     setIsRegionalAction(true);
     try {
@@ -806,7 +807,15 @@ export default function AdminDashboard() {
 
   const startProvinceRoute = async (province: string) => {
     const provinceOrders = provincialOrders[province] || [];
-    const ids = provinceOrders.map((order) => order.id);
+    const ids = provinceOrders
+      .filter((order) => (
+        order.status === 'pending'
+        || !order.courierId
+        || order.courierName === 'No asignado'
+        || order.courierId === profile?.courierId
+        || order.courierId === profile?.uid
+      ))
+      .map((order) => order.id);
     if (!user || !ids.length || isRegionalAction) return;
     setIsRegionalAction(true);
     try {

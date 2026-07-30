@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
     const { data: orders, error: ordersError } = await supabase
       .from("orders")
-      .select("id,province_name,municipality_name,sector_name,metadata,route_order")
+      .select("id,province_name,municipality_name,sector_name,metadata,route_order,courier_id,status")
       .eq("organization_id", profile.organization_id)
       .in("id", orderIds);
     if (ordersError) throw ordersError;
@@ -39,6 +39,9 @@ export async function POST(request: Request) {
     }
     if (province && orders.some((order) => order.province_name !== province)) {
       return NextResponse.json({ error: "PROVINCE_MISMATCH" }, { status: 409 });
+    }
+    if (orders.some((order) => order.courier_id && order.courier_id !== decoded.uid)) {
+      return NextResponse.json({ error: "ORDER_ASSIGNED_TO_ANOTHER_COURIER" }, { status: 409 });
     }
 
     const { data: activeRoute, error: activeRouteError } = await supabase
@@ -58,7 +61,7 @@ export async function POST(request: Request) {
     if (previousOrderIds.length > 0) {
       const { data, error } = await supabase
         .from("orders")
-        .select("id,province_name,municipality_name,sector_name,metadata,route_order")
+        .select("id,province_name,municipality_name,sector_name,metadata,route_order,courier_id,status")
         .eq("organization_id", profile.organization_id)
         .eq("courier_id", decoded.uid)
         .in("status", ACTIVE_ROUTE_ORDER_STATUSES)
