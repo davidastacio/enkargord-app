@@ -13,6 +13,11 @@ const ACTIVE_ROUTE_ORDER_STATUSES = [
   "rescheduled",
 ];
 
+const ROUTE_STARTABLE_STATUSES = new Set([
+  "pending",
+  ...ACTIVE_ROUTE_ORDER_STATUSES,
+]);
+
 export async function POST(request: Request) {
   try {
     const authorization = request.headers.get("authorization") ?? "";
@@ -42,6 +47,9 @@ export async function POST(request: Request) {
     }
     if (orders.some((order) => order.courier_id && order.courier_id !== decoded.uid)) {
       return NextResponse.json({ error: "ORDER_ASSIGNED_TO_ANOTHER_COURIER" }, { status: 409 });
+    }
+    if (orders.some((order) => !ROUTE_STARTABLE_STATUSES.has(order.status))) {
+      return NextResponse.json({ error: "ORDER_STATUS_NOT_ROUTE_STARTABLE" }, { status: 409 });
     }
 
     const { data: activeRoute, error: activeRouteError } = await supabase
@@ -101,15 +109,20 @@ export async function POST(request: Request) {
       courier_mode_enabled: true,
       updated_at: now,
     }).eq("firebase_uid", decoded.uid);
-    const { error: assignError } = await supabase.from("orders").update({
-      courier_id: decoded.uid,
-      courier_uid: decoded.uid,
-      courier_name: profile.name || "Administrador",
-      courier_type: "admin_courier",
-      status: "assigned",
-      updated_at: now,
-    }).eq("organization_id", profile.organization_id).in("id", orderIds);
-    if (assignError) throw assignError;
+    const pendingOrderIds = orders
+      .filter((order) => order.status === "pending" || !order.courier_id)
+      .map((order) => order.id);
+    if (pendingOrderIds.length > 0) {
+      const { error: assignError } = await supabase.from("orders").update({
+        courier_id: decoded.uid,
+        courier_uid: decoded.uid,
+        courier_name: profile.name || "Administrador",
+        courier_type: "admin_courier",
+        status: "assigned",
+        updated_at: now,
+      }).eq("organization_id", profile.organization_id).in("id", pendingOrderIds);
+      if (assignError) throw assignError;
+    }
     const routeOrderResults = await Promise.all(
       prioritizedOrderIds.map((orderId, index) =>
         supabase.from("orders").update({ route_order: index + 1 }).eq("id", orderId),
