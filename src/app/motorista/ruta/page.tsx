@@ -46,6 +46,25 @@ const STATUS_BADGE: Record<OrderStatus | string, { label: string; color: string;
   settled:           { label: 'Liquidado',         color: 'text-emerald-700', bg: 'bg-emerald-50' },
 };
 
+const ROUTE_ACTIVE_STATUSES = new Set([
+  'assigned',
+  'picked_up',
+  'in_transit',
+  'on_route',
+  'next_delivery',
+  'rescheduled',
+]);
+
+const ROUTE_RESOLVED_STATUSES = new Set([
+  'delivered',
+  'no_answer',
+  'customer_unreachable',
+  'failed',
+  'failed_delivery',
+  'cancelled',
+  'returned',
+]);
+
 export default function RutaPage() {
   const router = useRouter();
   const { profile } = useAuth() as any;
@@ -113,8 +132,7 @@ export default function RutaPage() {
   const initializeNewRoute = async () => {
     if (!courierId || orders.length === 0) return;
 
-    const activeOrderRecords = orders
-      .filter(o => ['assigned', 'picked_up', 'in_transit', 'customer_unreachable'].includes(o.status));
+    const activeOrderRecords = orders.filter((order) => ROUTE_ACTIVE_STATUSES.has(order.status));
     const liveLocation = await getSupabaseCourierLocation(courierId).catch(() => null);
     const activeOrders = prioritizeDeliveryOrders(
       activeOrderRecords,
@@ -168,6 +186,46 @@ export default function RutaPage() {
       routeInitializationRef.current = false;
     });
   }, [courierId, loading, orders, route]);
+
+  useEffect(() => {
+    if (!route || route.status !== 'active' || orders.length === 0) return;
+
+    const activeIds = orders
+      .filter((order) => ROUTE_ACTIVE_STATUSES.has(order.status))
+      .map((order) => order.id);
+    const retainedIds = route.orderIds.filter((id: string) => {
+      const order = orders.find((candidate) => candidate.id === id);
+      return order && !ROUTE_RESOLVED_STATUSES.has(order.status);
+    });
+    const mergedIds = Array.from(new Set([...retainedIds, ...activeIds]));
+    const routeIsCurrent =
+      mergedIds.length === route.orderIds.length &&
+      mergedIds.every((id, index) => id === route.orderIds[index]);
+
+    if (routeIsCurrent) return;
+
+    if (mergedIds.length === 0) {
+      void updateSupabaseRoute(route.id, {
+        orderIds: [],
+        currentOrderId: null,
+        nextOrderId: null,
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+      });
+      return;
+    }
+
+    const currentOrderId = mergedIds.includes(route.currentOrderId)
+      ? route.currentOrderId
+      : mergedIds[0];
+    const currentIndex = mergedIds.indexOf(currentOrderId);
+    void updateSupabaseRoute(route.id, {
+      orderIds: mergedIds,
+      currentOrderId,
+      nextOrderId: mergedIds[currentIndex + 1] || null,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [orders, route]);
 
   // Filter orders related to active route
   const activeRouteOrders: any[] = route
@@ -237,12 +295,12 @@ export default function RutaPage() {
       const resolvedOrderId = currentOrder.id;
       const resolvedIds = route.orderIds.filter((id: string) => {
         const candidate = orders.find((order) => order.id === id);
-        return id === resolvedOrderId || !candidate || ['delivered', 'cancelled', 'failed'].includes(candidate.status);
+        return id === resolvedOrderId || !candidate || ROUTE_RESOLVED_STATUSES.has(candidate.status);
       });
       const remainingOrders = orders.filter((order) =>
         route.orderIds.includes(order.id) &&
         order.id !== resolvedOrderId &&
-        !['delivered', 'cancelled', 'failed'].includes(order.status)
+        ROUTE_ACTIVE_STATUSES.has(order.status)
       );
       const prioritizedRemaining = prioritizeDeliveryOrders(remainingOrders, orderPoint(currentOrder));
       const reorderedIds = [...resolvedIds, ...prioritizedRemaining.map((order) => order.id)];
@@ -299,7 +357,7 @@ export default function RutaPage() {
     if (!route || !currentOrder) return;
 
     // 1. Check if current order is resolved
-    const isResolved = ['delivered', 'no_answer', 'customer_unreachable', 'failed', 'cancelled'].includes(currentOrder.status);
+    const isResolved = ROUTE_RESOLVED_STATUSES.has(currentOrder.status);
     if (!isResolved) {
       setErrorAlert("Debes completar o reportar el pedido actual antes de continuar.");
       setTimeout(() => setErrorAlert(null), 4000);
@@ -353,7 +411,7 @@ export default function RutaPage() {
           .slice(selectedIndex + 1)
           .find((id: string) => {
             const candidate = orders.find((item) => item.id === id);
-            return candidate && !['delivered', 'cancelled', 'failed'].includes(candidate.status);
+            return candidate && ROUTE_ACTIVE_STATUSES.has(candidate.status);
           }) || null;
 
       await updateSupabaseRoute(route.id, {

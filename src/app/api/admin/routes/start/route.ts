@@ -4,6 +4,15 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logisticsRegion, routeLabel } from "@/lib/logistics/regions";
 import { prioritizeDeliveryOrders } from "@/lib/logistics/route-priority";
 
+const ACTIVE_ROUTE_ORDER_STATUSES = [
+  "assigned",
+  "picked_up",
+  "in_transit",
+  "on_route",
+  "next_delivery",
+  "rescheduled",
+];
+
 export async function POST(request: Request) {
   try {
     const authorization = request.headers.get("authorization") ?? "";
@@ -31,8 +40,36 @@ export async function POST(request: Request) {
     if (province && orders.some((order) => order.province_name !== province)) {
       return NextResponse.json({ error: "PROVINCE_MISMATCH" }, { status: 409 });
     }
+
+    const { data: activeRoute, error: activeRouteError } = await supabase
+      .from("courier_routes")
+      .select("id,order_ids")
+      .eq("organization_id", profile.organization_id)
+      .eq("courier_id", decoded.uid)
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle();
+    if (activeRouteError) throw activeRouteError;
+
+    const previousOrderIds = Array.isArray(activeRoute?.order_ids)
+      ? activeRoute.order_ids.filter((id): id is string => typeof id === "string" && !orderIds.includes(id))
+      : [];
+    let previousOrders: typeof orders = [];
+    if (previousOrderIds.length > 0) {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("id,province_name,municipality_name,sector_name,metadata,route_order")
+        .eq("organization_id", profile.organization_id)
+        .eq("courier_id", decoded.uid)
+        .in("status", ACTIVE_ROUTE_ORDER_STATUSES)
+        .in("id", previousOrderIds);
+      if (error) throw error;
+      previousOrders = data || [];
+    }
+
+    const routeOrders = [...previousOrders, ...orders];
     const prioritizedOrders = prioritizeDeliveryOrders(
-      orders.map((order) => ({
+      routeOrders.map((order) => ({
         ...order,
         ...(order.metadata || {}),
         id: order.id,

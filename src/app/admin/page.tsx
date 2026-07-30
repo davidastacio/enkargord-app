@@ -731,9 +731,14 @@ export default function AdminDashboard() {
 
   const regionalOrders = orders
     .filter((order) => (
-      Boolean(order.courierId)
-      && order.courierName !== 'No asignado'
-      && !['pending', 'delivered', 'cancelled', 'returned'].includes(order.status)
+      !['delivered', 'cancelled', 'returned', 'failed', 'failed_delivery', 'customer_unreachable'].includes(order.status)
+      && (
+        order.status === 'pending'
+        || !order.courierId
+        || order.courierName === 'No asignado'
+        || order.courierId === profile?.courierId
+        || order.courierId === profile?.uid
+      )
     ))
     .reduce((groups, order) => {
       const region = logisticsRegion(order.provinceName || '');

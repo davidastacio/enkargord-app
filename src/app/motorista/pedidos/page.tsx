@@ -42,6 +42,15 @@ const escapeHtml = (value: unknown) =>
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
   })[character] || character);
 
+const ASSIGNED_ORDER_STATUSES = new Set([
+  'assigned',
+  'picked_up',
+  'in_transit',
+  'on_route',
+  'next_delivery',
+  'rescheduled',
+]);
+
 function printLabel(order: CourierOrder) {
   const win = window.open('', '_blank', 'width=400,height=600');
   if (!win) return;
@@ -179,7 +188,7 @@ export default function PedidosPage() {
     }
   }, [profile]);
 
-  const myOrders = orders; // Ya vienen filtrados desde Firestore
+  const myOrders = orders.filter((order) => ASSIGNED_ORDER_STATUSES.has(order.status));
   const filtered = myOrders.filter((o) => {
     const matchSearch =
       o.customer.name.toLowerCase().includes(search.toLowerCase()) ||
